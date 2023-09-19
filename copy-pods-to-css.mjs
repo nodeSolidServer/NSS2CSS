@@ -38,6 +38,9 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
   print(`3️⃣  CSS: Update ${Object.keys(accounts).length} passwords on disk`);
   await updatePasswords(accounts, cssDataPath);
+
+  print(`4️⃣  CSS: Update ${Object.keys(accounts).length} WebIDs on disk`);
+  await updateWebIds(accounts, cssDataPath);
 }
 
 // Reads the configuration of an NSS instance
@@ -157,6 +160,49 @@ async function updatePassword(accounts, loginFile) {
     }
     finally {
       assert(printChecks(nssAccount.username, checks), 'Password update failed');
+    }
+  }
+}
+
+// Updates all WebIDs on the CSS account data filesystem
+async function updateWebIds(accounts, dataPath) {
+  const accountsPath = resolve(dataPath, 'www/.internal/accounts/data/');
+  for await (const entry of await opendir(accountsPath)) {
+    if (entry.isFile() && entry.name.endsWith('$.json')) {
+      try {
+        await updateWebId(accounts, resolve(accountsPath, entry.name));
+      }
+      catch { /* Skip unsuccessful updates */ }
+    }
+  }
+}
+
+// Updates the WebID in the account file
+async function updateWebId(accounts, accountFile) {
+  const cssAccount = (await readJson(accountFile)).payload;
+  const nssAccount = accounts[cssAccount.id];
+
+  if (nssAccount) {
+    const checks = { oldWebId: false, newWebId: true };
+    try {
+      // Read the temporary WebID
+      const tmpWebIds = Object.keys(cssAccount.webIds);
+      assert.equal(tmpWebIds.length, 1);
+      const tmpWebId = tmpWebIds[0];
+      assert.match(tmpWebId, /^http/);
+      const webIdConfigUrl = cssAccount.webIds[tmpWebId];
+      assert.match(webIdConfigUrl, /^http.*\/account\//);
+
+      // Replace the temporary WebID by the desired WebID
+      delete cssAccount.webIds[tmpWebId];
+      checks.oldWebId = true;
+      if (nssAccount.webId)
+        cssAccount.webIds[nssAccount.webId] = webIdConfigUrl;
+      await writeJson(accountFile, { payload: cssAccount });
+      checks.newWebId = true;
+    }
+    finally {
+      assert(printChecks(nssAccount.username, checks), 'WebID update failed');
     }
   }
 }
