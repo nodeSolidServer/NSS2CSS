@@ -1,13 +1,16 @@
 #!/usr/bin/env node --no-warnings
 import assert from 'node:assert';
 import { resolve } from 'node:path';
-import { opendir, readFile } from 'node:fs/promises';
+import { opendir, readFile, writeFile } from 'node:fs/promises';
 
 const expectedArgs = {
   'nss/config.json': 'path to the NSS configuration file',
+  'css/data': 'path to the CSS data folder',
   'https://css.pod/': 'URL to the running CSS server instance',
   'xxx@users.css.pod': 'e-mail pattern to generate CSS usernames',
 };
+
+const passwordHashStart = '$2a$10$';
 
 main(...process.argv).catch(console.error);
 
@@ -25,14 +28,16 @@ async function main(bin, script, ...args) {
 
 // Copies the pods and accounts from NSS disk storage
 // to a CSS instance and associated disk storage
-async function copyNssPodsToCSS(nssConfigPath, cssUrl, emailPattern) {
+async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern) {
   print('1️⃣  NSS: Read pod configurations from disk');
   const nss = await readNssConfig(nssConfigPath);
   const pods = await readPodConfigs(nss.dbPath);
 
   print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
   const accounts = await createAccounts(pods, cssUrl, emailPattern);
-  print(`Created ${Object.keys(accounts).length} accounts`);
+
+  print(`3️⃣  CSS: Update ${Object.keys(accounts).length} passwords on disk`);
+  await updatePasswords(accounts, cssDataPath);
 }
 
 // Reads the configuration of an NSS instance
@@ -66,7 +71,7 @@ async function readPodConfig(configPath) {
   const pod = await readJson(configPath);
   const checks = {
     username: !!pod.username,
-    password: (pod.hashedPassword || '').startsWith('$2a$10$'),
+    password: (pod.hashedPassword || '').startsWith(passwordHashStart),
     webId: !!pod.webId,
   };
   assert(printChecks(pod.username, checks), 'Invalid pod config');
@@ -118,6 +123,41 @@ async function createAccount(creationUrl, name, emailDomain) {
   }
   finally {
     assert(printChecks(name, checks), 'Could not create account');
+  }
+}
+
+// Updates all passwords on the CSS login filesystem
+async function updatePasswords(accounts, dataPath) {
+  const loginsPath = resolve(dataPath, 'www/.internal/accounts/logins/password/');
+  for await (const entry of await opendir(loginsPath)) {
+    if (entry.isFile() && entry.name.endsWith('$.json')) {
+      try {
+        await updatePassword(accounts, resolve(loginsPath, entry.name));
+      }
+      catch { /* Skip unsuccessful updates */ }
+    }
+  }
+}
+
+// Updates the password in the login file
+async function updatePassword(accounts, loginFile) {
+  const login = await readJson(loginFile);
+  const nssAccount = accounts[login.accountId];
+
+  if (nssAccount) {
+    const checks = { oldPassword: false, newPassword: true };
+    try {
+      checks.oldPassword = login.password.startsWith(passwordHashStart);
+      if (checks.oldPassword) {
+        // Replace the temporary password by the NSS password hash
+        login.password = nssAccount.hashedPassword;
+        await writeJson(loginFile, login);
+        checks.newPassword = true;
+      }
+    }
+    finally {
+      assert(printChecks(nssAccount.username, checks), 'Password update failed');
+    }
   }
 }
 
@@ -193,4 +233,9 @@ function check(value) {
 // Reads and parses a JSON file from disk
 async function readJson(path) {
   return JSON.parse(await readFile(path, 'utf-8'));
+}
+
+// Writes a JSON file to disk
+async function writeJson(path, contents = {}) {
+  await writeFile(path, JSON.stringify(contents));
 }
