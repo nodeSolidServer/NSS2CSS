@@ -48,6 +48,9 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
   print(`5️⃣  CSS: Copy ${Object.keys(accounts).length} pod contents on disk`);
   await copyPods(accounts, nss.hostname, nss.dataPath, cssDataPath);
+
+  print(`6️⃣  CSS: Check ${Object.keys(accounts).length} pods for known resources`);
+  await testPods(accounts, cssUrl);
 }
 
 // Reads the configuration of an NSS instance
@@ -110,8 +113,8 @@ async function createAccount(creationUrl, name, emailDomain) {
 
   try {
     // Create and obtain a new empty account
-    const { resource, cookie } = await cssPost(creationUrl);
-    const { controls } = await cssGet(resource, cookie);
+    const { resource, cookie: authToken } = await cssApiPost(creationUrl);
+    const { controls } = await cssApiGet(resource, authToken);
     const [, id] = /account\/([^/]+)\/$/.exec(resource);
     checks.account = true;
 
@@ -123,14 +126,14 @@ async function createAccount(creationUrl, name, emailDomain) {
     // an attacker registers a bogus pod with someone else's e-mail,
     // in an attempt to gain access to all pods under that e-mail.
     const email = `${name}@${emailDomain}`;
-    await cssPost(controls.password.create, { email, password }, cookie);
+    await cssApiPost(controls.password.create, { email, password }, authToken);
     checks.login = true;
 
     // Create a pod under the account
-    await cssPost(controls.account.pod, { name }, cookie);
+    await cssApiPost(controls.account.pod, { name }, authToken);
     checks.pod = true;
 
-    return { id, email, cookie, controls };
+    return { id, email };
   }
   finally {
     assert(printChecks(name, checks), 'Could not create account');
@@ -248,10 +251,40 @@ async function copyPod(username, hostname, nssDataPath, cssDataPath) {
   }
 }
 
+// Tests for each pod whether it is accessible
+async function testPods(accounts, cssUrl) {
+  for (const { username } of Object.values(accounts)) {
+    try {
+      await testPod(username, cssUrl);
+    }
+    catch { /* Skip unsuccessful copies */ }
+  }
+}
+
+// Tests the given pod by trying to access typical resources
+async function testPod(username, cssUrl) {
+  const checks = { publicProfile: false, privateInbox: false };
+
+  // Create URL for pod
+  const podUrl = new URL(cssUrl);
+  podUrl.hostname = `${username}.${podUrl.hostname}`;
+
+  try {
+    // Check presence of resources available in typical NSS pods
+    const profile = await localFetch(new URL('/profile/card', podUrl));
+    checks.publicProfile = profile.status === 200;
+    const inbox = await localFetch(new URL('/inbox/', podUrl));
+    checks.privateInbox = inbox.status === 401;
+  }
+  finally {
+    assert(printChecks(username, checks), 'Pod test failed');
+  }
+}
+
 // Retrieves the CSS hypermedia controls for the account API
 async function getAccountControls(cssUrl) {
   try {
-    const body = await cssGet(new URL('.account/', cssUrl));
+    const body = await cssApiGet(new URL('.account/', cssUrl));
     assert.equal(body.version, '0.5', 'Unsupported CSS account API');
     return body.controls;
   }
@@ -260,34 +293,47 @@ async function getAccountControls(cssUrl) {
   }
 }
 
-// Retrieves JSON from CSS via an authenticated HTTP request
-async function cssGet(url, cookie = '') {
-  return cssFetch(url, {}, cookie);
+// Performs an HTTP GET on an authenticated CSS API
+async function cssApiGet(url, authToken = '') {
+  return cssApiFetch(url, {}, authToken);
 }
 
-// Posts JSON to CSS via an authenticated HTTP request
-async function cssPost(url, body = {}, cookie = '') {
-  return cssFetch(url, {
+// Performs an HTTP POST on an authenticated CSS API
+async function cssApiPost(url, body = {}, authToken = '') {
+  return cssApiFetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  }, cookie);
+  }, authToken);
 }
 
-// Performs an authenticated HTTP request on CSS
-async function cssFetch(url, options = {}, cookie = '') {
+// Performs an HTTP request on an authenticated CSS API
+async function cssApiFetch(url, options = {}, authToken = '') {
   const response = await fetch(url, {
     ...options,
     headers: {
       ...options.headers,
       accept: 'application/json',
-      cookie: `css-account=${cookie}`,
+      authorization: `CSS-Account-Cookie ${authToken}`,
     },
   });
   const json = await response.json();
   if (response.status !== 200)
     throw new Error(json.message);
   return json;
+}
+
+// Fetches the resource with special DNS resolution for local names
+function localFetch(url, init = {}) {
+  url = new URL(url);
+
+  // The `pod.localhost` pattern is common within NSS and CSS,
+  // but Node.js does not resolve this well by default
+  const host = url.host;
+  if (url.hostname.endsWith('.localhost'))
+    url.hostname = 'localhost';
+
+  return fetch(url, { ...init, headers: { host } });
 }
 
 // Generates a random password
