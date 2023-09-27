@@ -1,7 +1,11 @@
 #!/usr/bin/env node --no-warnings
 import assert from 'node:assert';
 import { resolve } from 'node:path';
-import { opendir, readFile, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
+import * as childProcess from 'node:child_process';
+import { lstat, opendir, readFile, writeFile } from 'node:fs/promises';
+
+const execFile = promisify(childProcess.execFile);
 
 const expectedArgs = {
   'nss/config.json': 'path to the NSS configuration file',
@@ -41,6 +45,9 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
   print(`4️⃣  CSS: Update ${Object.keys(accounts).length} WebIDs on disk`);
   await updateWebIds(accounts, cssDataPath);
+
+  print(`5️⃣  CSS: Copy ${Object.keys(accounts).length} pod contents on disk`);
+  await copyPods(accounts, nss.hostname, nss.dataPath, cssDataPath);
 }
 
 // Reads the configuration of an NSS instance
@@ -51,6 +58,7 @@ async function readNssConfig(configPath) {
   return {
     dbPath: resolve(configFolder, config.dbPath),
     dataPath: resolve(configFolder, config.root),
+    hostname: new URL(config.serverUri).hostname,
   };
 }
 
@@ -204,6 +212,39 @@ async function updateWebId(accounts, accountFile) {
     finally {
       assert(printChecks(nssAccount.username, checks), 'WebID update failed');
     }
+  }
+}
+
+// Copies the contents of all NSS pods to CSS via disk
+async function copyPods(accounts, hostname, nssDataPath, cssDataPath) {
+  for (const { username } of Object.values(accounts)) {
+    try {
+      await copyPod(username, hostname, nssDataPath, cssDataPath);
+    }
+    catch { /* Skip unsuccessful copies */ }
+  }
+}
+
+// Copies the contents of the NSS pod to CSS via disk
+async function copyPod(username, hostname, nssDataPath, cssDataPath) {
+  const checks = { clear: false, copy: false };
+  const source = resolve(nssDataPath, `${username}.${hostname}`);
+  const destination = resolve(cssDataPath, username);
+  try {
+    // Check that source and destination are folders
+    assert((await lstat(source)).isDirectory(), 'Invalid source');
+    assert((await lstat(destination)).isDirectory(), 'Invalid destination');
+
+    // Remove existing pod contents from the destination
+    await execFile('rm', ['-r', '--', destination]);
+    checks.clear = true;
+
+    // Copy new contents from the source to the destination
+    await execFile('cp', ['-a', '--', source, destination]);
+    checks.copy = true;
+  }
+  finally {
+    assert(printChecks(username, checks), 'Pod copy failed');
   }
 }
 
