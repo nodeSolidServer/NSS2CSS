@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import * as childProcess from 'node:child_process';
-import { lstat, opendir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
 
 const execFile = promisify(childProcess.execFile);
 
@@ -35,19 +35,22 @@ async function main(bin, script, ...args) {
 async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern) {
   print('1️⃣  NSS: Read pod configurations from disk');
   const nss = await readNssConfig(nssConfigPath);
-  const pods = await readPodConfigs(nss.dbPath);
+  const userFiles = (await readdir(nss.usersPath)).map(f => resolve(nss.usersPath, f));
+  const pods = await asyncMap(readPodConfig, userFiles);
 
   print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
-  const accounts = await createAccounts(pods, cssUrl, emailPattern);
+  const { account: { create } } = await getAccountControls(cssUrl);
+  const emailDomain = emailPattern.replace(/.*@+/, '');
+  const accounts = await asyncMap(createAccount, pods, create, emailDomain);
 
   print(`3️⃣  CSS: Update ${accounts.length} accounts on disk`);
-  await updateAccounts(accounts, cssDataPath);
+  await asyncMap(updateAccount, accounts, resolve(cssDataPath, 'www/.internal'));
 
   print(`4️⃣  CSS: Copy ${accounts.length} pod contents on disk`);
-  await copyPods(accounts, nss.hostname, nss.dataPath, cssDataPath);
+  await asyncMap(copyPodFiles, accounts, nss.hostname, nss.dataPath, cssDataPath);
 
   print(`5️⃣  CSS: Check ${accounts.length} pods for known resources`);
-  await testPods(accounts, cssUrl);
+  await asyncMap(testPod, accounts, cssUrl);
 }
 
 // Reads the configuration of an NSS instance
@@ -56,30 +59,15 @@ async function readNssConfig(configPath) {
   const configFolder = resolve(configPath, '../');
   const config = await readJson(configPath);
   return {
-    dbPath: resolve(configFolder, config.dbPath),
-    dataPath: resolve(configFolder, config.root),
     hostname: new URL(config.serverUri).hostname,
+    dataPath: resolve(configFolder, config.root),
+    usersPath: resolve(configFolder, config.dbPath, 'oidc/users/users/'),
   };
 }
 
-// Reads the configurations of all pods from the NSS database
-async function readPodConfigs(dbPath) {
-  const configs = [];
-  const usersPath = resolve(dbPath, 'oidc/users/users/');
-  for await (const entry of await opendir(usersPath)) {
-    if (entry.isFile() && entry.name.endsWith('.json')) {
-      try {
-        configs.push(await readPodConfig(resolve(usersPath, entry.name)));
-      }
-      catch { /* Skip invalid pods */ }
-    }
-  }
-  return configs;
-}
-
 // Reads the configuration of a single pod from the NSS database
-async function readPodConfig(configPath) {
-  const pod = await readJson(configPath);
+async function readPodConfig(configFile) {
+  const pod = await readJson(configFile);
   const checks = {
     username: !!pod.username,
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
@@ -89,23 +77,9 @@ async function readPodConfig(configPath) {
   return pod;
 }
 
-// Creates a CSS account and pod for each of the NSS pods
-async function createAccounts(pods, cssUrl, emailPattern) {
-  const accounts = [];
-  const emailDomain = emailPattern.replace(/.*@+/, '');
-  const { account: { create } } = await getAccountControls(cssUrl);
-  for (const pod of pods) {
-    try {
-      const account = await createAccount(create, pod.username, emailDomain);
-      accounts.push({ ...pod, ...account });
-    }
-    catch { /* Skip unsuccessful accounts */ }
-  }
-  return accounts;
-}
-
 // Creates a CSS account with a login and pod
-async function createAccount(creationUrl, name, emailDomain) {
+async function createAccount(pod, creationUrl, emailDomain) {
+  const { username, webId, hashedPassword } = pod;
   const checks = { account: false, login: false, pod: false };
 
   try {
@@ -122,38 +96,27 @@ async function createAccount(creationUrl, name, emailDomain) {
     // As such, there exists a security risk in which
     // an attacker registers a bogus pod with someone else's e-mail,
     // in an attempt to gain access to all pods under that e-mail.
-    const email = `${name}@${emailDomain}`;
+    const email = `${username}@${emailDomain}`;
     await cssApiPost(controls.password.create, { email, password }, authorization);
     checks.login = true;
 
     // Create a pod under the account
-    await cssApiPost(controls.account.pod, { name }, authorization);
+    await cssApiPost(controls.account.pod, { name: username }, authorization);
     checks.pod = true;
 
-    return { id, email };
+    return { id, username, email, webId, hashedPassword };
   }
   finally {
-    assert(printChecks(name, checks), 'Could not create account');
-  }
-}
-
-// Updates all passwords and WebIDs on the CSS login filesystem
-async function updateAccounts(accounts, dataPath) {
-  for (const account of accounts) {
-    try {
-      await updateAccount(account, dataPath);
-    }
-    catch { /* Skip unsuccessful updates */ }
+    assert(printChecks(username, checks), 'Could not create account');
   }
 }
 
 // Updates the password and WebID in the account file
-async function updateAccount(account, dataPath) {
+async function updateAccount(account, internalPath) {
   const checks = { read: false, password: false, webId: false, write: false };
   try {
     // Read the account file from disk
-    const accountFile = resolve(dataPath,
-      'www/.internal/accounts/data/', `${account.id}$.json`);
+    const accountFile = resolve(internalPath, `accounts/data/${account.id}$.json`);
     const accountConfig = await readJson(accountFile);
     checks.read = true;
 
@@ -184,18 +147,8 @@ async function updateAccount(account, dataPath) {
   }
 }
 
-// Copies the contents of all NSS pods to CSS via disk
-async function copyPods(accounts, hostname, nssDataPath, cssDataPath) {
-  for (const { username } of accounts) {
-    try {
-      await copyPod(username, hostname, nssDataPath, cssDataPath);
-    }
-    catch { /* Skip unsuccessful copies */ }
-  }
-}
-
 // Copies the contents of the NSS pod to CSS via disk
-async function copyPod(username, hostname, nssDataPath, cssDataPath) {
+async function copyPodFiles({ username }, hostname, nssDataPath, cssDataPath) {
   const checks = { clear: false, copy: false };
   const source = resolve(nssDataPath, `${username}.${hostname}`);
   const destination = resolve(cssDataPath, username);
@@ -217,18 +170,8 @@ async function copyPod(username, hostname, nssDataPath, cssDataPath) {
   }
 }
 
-// Tests for each pod whether it is accessible
-async function testPods(accounts, cssUrl) {
-  for (const { username } of accounts) {
-    try {
-      await testPod(username, cssUrl);
-    }
-    catch { /* Skip unsuccessful copies */ }
-  }
-}
-
 // Tests the given pod by trying to access typical resources
-async function testPod(username, cssUrl) {
+async function testPod({ username }, cssUrl) {
   const checks = { publicProfile: false, privateInbox: false };
 
   // Create URL for pod
@@ -306,6 +249,18 @@ function localFetch(url, init = {}) {
 function generateRandomPassword(length = 32) {
   return new Array(length).fill(0).map(() =>
     String.fromCharCode(65 + Math.floor(58 * Math.random()))).join('');
+}
+
+// Fail-safe async version of map that ignores failures
+async function asyncMap(func, items, ...params) {
+  const results = [];
+  for (const item of items) {
+    try {
+      results.push(await func(item, ...params));
+    }
+    catch { /* Ignore unsuccessful executions */ }
+  }
+  return results;
 }
 
 // Prints a message to the console
