@@ -40,16 +40,13 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
   const accounts = await createAccounts(pods, cssUrl, emailPattern);
 
-  print(`3️⃣  CSS: Update ${Object.keys(accounts).length} passwords on disk`);
-  await updatePasswords(accounts, cssDataPath);
+  print(`3️⃣  CSS: Update ${accounts.length} accounts on disk`);
+  await updateAccounts(accounts, cssDataPath);
 
-  print(`4️⃣  CSS: Update ${Object.keys(accounts).length} WebIDs on disk`);
-  await updateWebIds(accounts, cssDataPath);
-
-  print(`5️⃣  CSS: Copy ${Object.keys(accounts).length} pod contents on disk`);
+  print(`4️⃣  CSS: Copy ${accounts.length} pod contents on disk`);
   await copyPods(accounts, nss.hostname, nss.dataPath, cssDataPath);
 
-  print(`6️⃣  CSS: Check ${Object.keys(accounts).length} pods for known resources`);
+  print(`5️⃣  CSS: Check ${accounts.length} pods for known resources`);
   await testPods(accounts, cssUrl);
 }
 
@@ -94,13 +91,13 @@ async function readPodConfig(configPath) {
 
 // Creates a CSS account and pod for each of the NSS pods
 async function createAccounts(pods, cssUrl, emailPattern) {
-  const accounts = {};
+  const accounts = [];
   const emailDomain = emailPattern.replace(/.*@+/, '');
   const { account: { create } } = await getAccountControls(cssUrl);
   for (const pod of pods) {
     try {
       const account = await createAccount(create, pod.username, emailDomain);
-      accounts[account.id] = { ...pod, ...account };
+      accounts.push({ ...pod, ...account });
     }
     catch { /* Skip unsuccessful accounts */ }
   }
@@ -113,9 +110,9 @@ async function createAccount(creationUrl, name, emailDomain) {
 
   try {
     // Create and obtain a new empty account
-    const { resource, cookie: authToken } = await cssApiPost(creationUrl);
-    const { controls } = await cssApiGet(resource, authToken);
-    const [, id] = /account\/([^/]+)\/$/.exec(resource);
+    const { authorization } = await cssApiPost(creationUrl);
+    const { controls } = await cssApiGet(creationUrl, authorization);
+    const [, id] = /\/account\/([^/]+)\//.exec(controls.account.webId);
     checks.account = true;
 
     // Create a login to the account with a temporary password
@@ -126,11 +123,11 @@ async function createAccount(creationUrl, name, emailDomain) {
     // an attacker registers a bogus pod with someone else's e-mail,
     // in an attempt to gain access to all pods under that e-mail.
     const email = `${name}@${emailDomain}`;
-    await cssApiPost(controls.password.create, { email, password }, authToken);
+    await cssApiPost(controls.password.create, { email, password }, authorization);
     checks.login = true;
 
     // Create a pod under the account
-    await cssApiPost(controls.account.pod, { name }, authToken);
+    await cssApiPost(controls.account.pod, { name }, authorization);
     checks.pod = true;
 
     return { id, email };
@@ -140,87 +137,56 @@ async function createAccount(creationUrl, name, emailDomain) {
   }
 }
 
-// Updates all passwords on the CSS login filesystem
-async function updatePasswords(accounts, dataPath) {
-  const loginsPath = resolve(dataPath, 'www/.internal/accounts/logins/password/');
-  for await (const entry of await opendir(loginsPath)) {
-    if (entry.isFile() && entry.name.endsWith('$.json')) {
-      try {
-        await updatePassword(accounts, resolve(loginsPath, entry.name));
-      }
-      catch { /* Skip unsuccessful updates */ }
-    }
-  }
-}
-
-// Updates the password in the login file
-async function updatePassword(accounts, loginFile) {
-  const login = await readJson(loginFile);
-  const nssAccount = accounts[login.accountId];
-
-  if (nssAccount) {
-    const checks = { oldPassword: false, newPassword: true };
+// Updates all passwords and WebIDs on the CSS login filesystem
+async function updateAccounts(accounts, dataPath) {
+  for (const account of accounts) {
     try {
-      checks.oldPassword = login.password.startsWith(passwordHashStart);
-      if (checks.oldPassword) {
-        // Replace the temporary password by the NSS password hash
-        login.password = nssAccount.hashedPassword;
-        await writeJson(loginFile, login);
-        checks.newPassword = true;
-      }
+      await updateAccount(account, dataPath);
     }
-    finally {
-      assert(printChecks(nssAccount.username, checks), 'Password update failed');
-    }
+    catch { /* Skip unsuccessful updates */ }
   }
 }
 
-// Updates all WebIDs on the CSS account data filesystem
-async function updateWebIds(accounts, dataPath) {
-  const accountsPath = resolve(dataPath, 'www/.internal/accounts/data/');
-  for await (const entry of await opendir(accountsPath)) {
-    if (entry.isFile() && entry.name.endsWith('$.json')) {
-      try {
-        await updateWebId(accounts, resolve(accountsPath, entry.name));
-      }
-      catch { /* Skip unsuccessful updates */ }
+// Updates the password and WebID in the account file
+async function updateAccount(account, dataPath) {
+  const checks = { read: false, password: false, webId: false, write: false };
+  try {
+    // Read the account file from disk
+    const accountFile = resolve(dataPath,
+      'www/.internal/accounts/data/', `${account.id}$.json`);
+    const accountConfig = await readJson(accountFile);
+    checks.read = true;
+
+    // Update the password section
+    const passwordSections = Object.values(accountConfig['**password**']);
+    assert.equal(passwordSections.length, 1);
+    assert(account.hashedPassword.startsWith(passwordHashStart));
+    assert(passwordSections[0].password.startsWith(passwordHashStart));
+    passwordSections[0].password = account.hashedPassword;
+    checks.password = true;
+
+    // Update the WebID section
+    if (account.webId) {
+      const webIdSections = Object.values(accountConfig['**webIdLink**']);
+      assert.equal(webIdSections.length, 1);
+      assert(webIdSections[0].webId.startsWith('http'));
+      assert(account.webId.startsWith('http'));
+      webIdSections[0].webId = account.webId;
     }
+    checks.webId = true;
+
+    // Write the updated account configuration
+    await writeJson(accountFile, accountConfig);
+    checks.write = true;
   }
-}
-
-// Updates the WebID in the account file
-async function updateWebId(accounts, accountFile) {
-  const cssAccount = (await readJson(accountFile)).payload;
-  const nssAccount = accounts[cssAccount.id];
-
-  if (nssAccount) {
-    const checks = { oldWebId: false, newWebId: true };
-    try {
-      // Read the temporary WebID
-      const tmpWebIds = Object.keys(cssAccount.webIds);
-      assert.equal(tmpWebIds.length, 1);
-      const tmpWebId = tmpWebIds[0];
-      assert.match(tmpWebId, /^http/);
-      const webIdConfigUrl = cssAccount.webIds[tmpWebId];
-      assert.match(webIdConfigUrl, /^http.*\/account\//);
-
-      // Replace the temporary WebID by the desired WebID
-      delete cssAccount.webIds[tmpWebId];
-      checks.oldWebId = true;
-      if (nssAccount.webId)
-        cssAccount.webIds[nssAccount.webId] = webIdConfigUrl;
-      await writeJson(accountFile, { payload: cssAccount });
-      checks.newWebId = true;
-    }
-    finally {
-      assert(printChecks(nssAccount.username, checks), 'WebID update failed');
-    }
+  finally {
+    assert(printChecks(account.username, checks), 'Password update failed');
   }
 }
 
 // Copies the contents of all NSS pods to CSS via disk
 async function copyPods(accounts, hostname, nssDataPath, cssDataPath) {
-  for (const { username } of Object.values(accounts)) {
+  for (const { username } of accounts) {
     try {
       await copyPod(username, hostname, nssDataPath, cssDataPath);
     }
@@ -253,7 +219,7 @@ async function copyPod(username, hostname, nssDataPath, cssDataPath) {
 
 // Tests for each pod whether it is accessible
 async function testPods(accounts, cssUrl) {
-  for (const { username } of Object.values(accounts)) {
+  for (const { username } of accounts) {
     try {
       await testPod(username, cssUrl);
     }
@@ -294,27 +260,27 @@ async function getAccountControls(cssUrl) {
 }
 
 // Performs an HTTP GET on an authenticated CSS API
-async function cssApiGet(url, authToken = '') {
-  return cssApiFetch(url, {}, authToken);
+async function cssApiGet(url, authorization = '') {
+  return cssApiFetch(url, {}, authorization);
 }
 
 // Performs an HTTP POST on an authenticated CSS API
-async function cssApiPost(url, body = {}, authToken = '') {
+async function cssApiPost(url, body = {}, authorization = '') {
   return cssApiFetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  }, authToken);
+  }, authorization);
 }
 
 // Performs an HTTP request on an authenticated CSS API
-async function cssApiFetch(url, options = {}, authToken = '') {
+async function cssApiFetch(url, options = {}, authorization = '') {
   const response = await fetch(url, {
     ...options,
     headers: {
       ...options.headers,
       accept: 'application/json',
-      authorization: `CSS-Account-Cookie ${authToken}`,
+      authorization: `CSS-Account-Cookie ${authorization}`,
     },
   });
   const json = await response.json();
