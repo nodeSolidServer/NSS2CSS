@@ -1,4 +1,6 @@
 #!/usr/bin/env node --no-warnings
+// ©2023 Ruben Verborgh – MIT License
+
 import assert from 'node:assert';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';

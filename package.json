@@ -1,7 +1,4 @@
 {
-  "name": "@solid/nss-to-css",
-  "version": "0.1.0",
-  "description": "Copy NSS pods to CSS.",
   "author": "Ruben Verborgh <ruben@verborgh.org> (https://ruben.verborgh.org/)",
   "license": "MIT",
   "scripts": {
