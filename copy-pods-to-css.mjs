@@ -74,6 +74,15 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
   const userPods = await asyncMap(readPodConfig, userFiles, nss);
+  /* function testUsername (username, nssPodLocation) {
+    if (username.includes('.')) { dot += 1; return true }
+    if (!fs.existsSync(nssPodLocation)) { nodata += 1; return true }
+    if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { webid += 1; return true }
+    if (username.includes(' ')) { blank += 1; return true }
+    if (username.includes('@')) { arobase += 1; return true }
+    if (!isLowerCase(username)) { notLowerCase += 1; return true }
+    return false
+    } */
   print('userPods ' + userPods.length)
   const userPodsLength = userPods.length
   /* while(userPods.length) {
@@ -95,7 +104,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     const accounts = await asyncMap(createAccount, pods, create, emailDomain);
 
     print(`3️⃣  CSS: Update ${accounts.length} accounts on disk`);
-    await asyncMap(updateAccount, accounts, resolve(cssDataPath, 'www/.internal'), nss.origin);
+    await asyncMap(updateAccount, accounts, resolve(cssDataPath, 'www/.internal'), nss);
 
     print(`4️⃣  CSS: Copy ${accounts.length} pods contents on disk`);
     await asyncMap(copyPodFiles, accounts, nss.hostname, nss.dataPath, cssDataPath);
@@ -135,8 +144,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\ncreated CSS pods ' + accountsLength +
   '\n\nfailed CSS pod fetch ' + cssFailedFetch.length
   )
-  print(cssFailedFetch)
-}
+  print(cssFailedFetch)}
 
 // Reads the configuration of an NSS instance
 async function readNssConfig(configPath) {
@@ -163,8 +171,8 @@ async function readPodConfig(configFile, nss) {
     webId: !!pod.webId,
     pod: true,
   };
-  const nssPodLocation = resolve(nss.dataPath, `${pod.username}.${nss.serverUri.hostname}`)
-  try {
+  const nssPodLocation = resolve(nss.dataPath, `${pod.username}.${nss.serverUri.hostname}`) // alain
+  // try {
     // if (!checks.username && !checks.password && !pod.webId) checks.pod = false //throw new Error('undefined')
     if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.pod = false } // throw new Error('dot') }
     else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.pod = false } // throw new Error('no data') }
@@ -172,10 +180,10 @@ async function readPodConfig(configFile, nss) {
     else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.pod = false } // throw new Error('arobase') }
     else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.pod = false } // throw new Error('blank') }
     else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.pod = false } // throw new Error('not lowercase') }
-    else { await localFetch(new URL('/profile/card#me', nss.serverUri)) }
-  } catch { invalidUsers.webid.push(pod.username); checks.pod = false }
+  //  else { await localFetch(new URL('/profile/card#me', nss.serverUri)) }
+  // } catch { invalidUsers.webid.push(pod.username); checks.pod = false }
   assert(printChecks(pod.username, checks), 'Invalid pod config');
-  return pod;
+  if (pod.username) return pod;
 }
 
 // Creates a CSS account with a login and pod
@@ -213,7 +221,7 @@ async function createAccount(pod, creationUrl, emailDomain) {
 }
 
 // Updates the password and WebID in the account file
-async function updateAccount(account, internalPath, nssOrigin) {
+async function updateAccount(account, internalPath, nss) {
   const checks = { read: false, password: false, webId: false, write: false };
   try {
     // Read the account file from disk
@@ -236,12 +244,13 @@ async function updateAccount(account, internalPath, nssOrigin) {
       assert(webIdSections[0].webId.startsWith('http'));
       assert(account.webId.startsWith('http'));
       // External WebID in NSS
-      if (!account.webId.startsWith(nssOrigin)) {
-        print('external webIdLink ' + webIdSections[0].webId)
-        webIdSections[0].webId = account.webId;
+      if (!account.webId.startsWith('https://' + account.username + '.' + nss.host)) {
+        // print('external webIdLink ' + account.webId + ' ' + account.username + '.' + nss.host)
+        // webIdSections[0].webId = account.webId;
+        cssFailedFetch.push(account.username)
       }
+      else checks.webId = true;
     }
-    checks.webId = true;
 
     // Write the updated account configuration
     await writeJson(accountFile, accountConfig);
@@ -506,7 +515,11 @@ function print(message) {
 // returning whether all checks passed
 function printChecks(name, checks) {
   const success = Object.values(checks).every(c => c);
-  if (success) {
+  /* print(`\t${check(success)} ${name}\t ${
+    Object.entries(checks).map(([key, value]) =>
+      `${check(value)} ${key}`).join('\t')
+  }`); */
+  if (!success) {
     const checksString = Object.entries(checks).map(([key, value]) => `${check(value)} ${key}`).join('\t')
     print(`\t${check(success)} ${name}\t ${checksString}`);
   }
