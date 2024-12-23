@@ -84,7 +84,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   // for (pods in chunks) {
   var remaining = userPods.length
   var accountsLength = 0
-  /* for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
+  for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
     const pods = chunks[i]
     // print(`\nprocessing ${step} accounts from remaining ${userPods.length+Number(step)}/${userPodsLength}\n`)
     print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${userPodsLength}\n`)
@@ -120,7 +120,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     await asyncMap(testPod, accounts, cssUrl);
 
     accountsLength += accounts.length
-  } */
+  }
   print('NSS userFiles ' + userFiles.length)
   print('\ninvalid pods ' +
   '\n\tusername with dot ' + invalidUsers.dot.length +
