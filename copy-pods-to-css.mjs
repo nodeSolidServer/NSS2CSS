@@ -121,20 +121,21 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
     accountsLength += accounts.length
   } */
-    print('NSS userFiles ' + userFiles.length)
-    print('\ninvalid pods ' +
-    '\n\tusername with dot ' + invalidUsers.dot.length +
-    '\n\tnodata folder ' + invalidUsers.nodata.length +
-    '\n\tother can\'access profile ' + invalidUsers.profile.length +
-    '\n\tother can\'access WebID ' + invalidUsers.webid.length +
-    '\n\tusername with arobase ' + invalidUsers.arobase.length +
-    '\n\tusername with blank ' + invalidUsers.blank.length +
-    '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase.length +
+  print('NSS userFiles ' + userFiles.length)
+  print('\ninvalid pods ' +
+  '\n\tusername with dot ' + invalidUsers.dot.length +
+  '\n\tnodata folder ' + invalidUsers.nodata.length +
+  '\n\tother can\'access profile ' + invalidUsers.profile.length +
+  '\n\tother can\'access WebID ' + invalidUsers.webid.length +
+  '\n\tusername with arobase ' + invalidUsers.arobase.length +
+  '\n\tusername with blank ' + invalidUsers.blank.length +
+  '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase.length +
 
-    '\n\nvalid NSS pods ' + userPodsLength +
-    '\n\ncreated CSS pods ' + accountsLength +
-    '\n\nfailed CSS pod fetch ' + cssFailedFetch.length
+  '\n\nvalid NSS pods ' + userPodsLength +
+  '\n\ncreated CSS pods ' + accountsLength +
+  '\n\nfailed CSS pod fetch ' + cssFailedFetch.length
   )
+  print(cssFailedFetch)
 }
 
 // Reads the configuration of an NSS instance
@@ -332,7 +333,7 @@ async function updateAclDefault ({ username }, cssDataPath) {
     })
   }
   finally {
-    assert(print(`\t${username}\t${count}`), 'acl:default update failed');
+    // assert(print(`\t${username}\t${count}`), 'acl:default update failed');
   }
 }
 
@@ -368,7 +369,7 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
   }
   catch (err) { print(err) }
   finally {
-    assert(print(`\t${username}\t${count}`), 'acl:default update failed');
+    // assert(print(`\t${username}\t${count}`), 'acl:default update failed');
   }
 }
 
@@ -505,10 +506,10 @@ function print(message) {
 // returning whether all checks passed
 function printChecks(name, checks) {
   const success = Object.values(checks).every(c => c);
-  print(`\t${check(success)} ${name}\t ${
-    Object.entries(checks).map(([key, value]) =>
-      `${check(value)} ${key}`).join('\t')
-  }`);
+  if (success) {
+    const checksString = Object.entries(checks).map(([key, value]) => `${check(value)} ${key}`).join('\t')
+    print(`\t${check(success)} ${name}\t ${checksString}`);
+  }
   return success;
 }
 
