@@ -74,15 +74,6 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
   const userPods = await asyncMap(readPodConfig, userFiles, nss);
-  /* function testUsername (username, nssPodLocation) {
-    if (username.includes('.')) { dot += 1; return true }
-    if (!fs.existsSync(nssPodLocation)) { nodata += 1; return true }
-    if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { webid += 1; return true }
-    if (username.includes(' ')) { blank += 1; return true }
-    if (username.includes('@')) { arobase += 1; return true }
-    if (!isLowerCase(username)) { notLowerCase += 1; return true }
-    return false
-    } */
   print('userPods ' + userPods.length)
   const userPodsLength = userPods.length
   /* while(userPods.length) {
