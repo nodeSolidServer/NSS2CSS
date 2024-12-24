@@ -130,7 +130,10 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
     accountsLength += accounts.length
   }
-  print('NSS userFiles ' + userFiles.length)
+  print('\nNSS userFiles ' + userFiles.length +
+    '\n\tdeprecated config filename ' + invalidUsers.invalidUserFileName.length +
+    '\n\tinvalid pod config ' + invalidUsers.invalidConfig.length
+  )
   print('\ninvalid pods ' +
   '\n\tusername with dot ' + invalidUsers.dot.length +
   '\n\tnodata folder ' + invalidUsers.nodata.length +
@@ -169,9 +172,11 @@ async function readPodConfig(configFile, nss) {
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
     webId: !!pod.webId,
   };
-  const nssPodLocation = resolve(nss.dataPath, `${pod.username}.${nss.serverUri.hostname}`) // alain
+  const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
   // print(nssPodLocation)
-  if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
+  if (!configFile.includes(`.${nss.serverUri.host}%2F`)) { invalidUsers.invalidUserFileName.push(pod.username); checks.dot = false }
+  else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.InvalidConfig.push(pod.username)}
+  else if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
   else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
   else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
   else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
