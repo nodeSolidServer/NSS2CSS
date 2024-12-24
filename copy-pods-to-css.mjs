@@ -175,7 +175,7 @@ async function readPodConfig(configFile, nss) {
   const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
   // print(nssPodLocation)
   if (!configFile.includes(`.${nss.serverUri.host}%2F`)) { invalidUsers.invalidUserFileName.push(pod.username); checks.dot = false }
-  else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.InvalidConfig.push(pod.username)}
+  else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
   else if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
   else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
   else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
