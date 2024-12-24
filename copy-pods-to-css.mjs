@@ -168,16 +168,15 @@ async function readPodConfig(configFile, nss) {
     username: !!pod.username,
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
     webId: !!pod.webId,
-    pod: true,
   };
   const nssPodLocation = resolve(nss.dataPath, `${pod.username}.${nss.serverUri.hostname}`) // alain
-  print(nssPodLocation)
-  if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.pod = false } // throw new Error('dot') }
-  else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.pod = false } // throw new Error('no data') }
-  else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.pod = false } // throw new Error('webid') }
-  else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.pod = false } // throw new Error('arobase') }
-  else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.pod = false } // throw new Error('blank') }
-  else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.pod = false } // throw new Error('not lowercase') }
+  // print(nssPodLocation)
+  if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
+  else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
+  else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
+  else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
+  else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
+  else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
   assert(printChecks(pod.username, checks), 'Invalid pod config');
   if (checks.username) return pod;
 }
