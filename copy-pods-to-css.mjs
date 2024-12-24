@@ -110,8 +110,8 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     await asyncMap(copyPodFiles, accounts, nss.hostname, nss.dataPath, cssDataPath);
 
     print(`5️⃣  CSS: Update ${accounts.length} pods : replace WebID oidcIssuer`);
-    const nssUrl = nss.serverUri.toString()
-    print('nss ' + nss.serverUri + ' => css ' + cssUrl)
+    const nssUrl = nss.serverUri.href // toString()
+    print('nss ' + nssUrl + ' => css ' + cssUrl)
     await asyncMap(updateOidcIssuer, accounts, cssDataPath, nssUrl, cssUrl);
 
     print(`6️⃣  CSS: Update ${accounts.length} pods : replace defaultForNew on folders/.acl`);
@@ -135,7 +135,6 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tusername with dot ' + invalidUsers.dot.length +
   '\n\tnodata folder ' + invalidUsers.nodata.length +
   '\n\tother can\'access profile ' + invalidUsers.profile.length +
-  '\n\tother can\'access WebID ' + invalidUsers.webid.length +
   '\n\tusername with arobase ' + invalidUsers.arobase.length +
   '\n\tusername with blank ' + invalidUsers.blank.length +
   '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase.length +
@@ -172,18 +171,15 @@ async function readPodConfig(configFile, nss) {
     pod: true,
   };
   const nssPodLocation = resolve(nss.dataPath, `${pod.username}.${nss.serverUri.hostname}`) // alain
-  // try {
-    // if (!checks.username && !checks.password && !pod.webId) checks.pod = false //throw new Error('undefined')
-    if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.pod = false } // throw new Error('dot') }
-    else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.pod = false } // throw new Error('no data') }
-    else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.pod = false } // throw new Error('webid') }
-    else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.pod = false } // throw new Error('arobase') }
-    else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.pod = false } // throw new Error('blank') }
-    else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.pod = false } // throw new Error('not lowercase') }
-  //  else { await localFetch(new URL('/profile/card#me', nss.serverUri)) }
-  // } catch { invalidUsers.webid.push(pod.username); checks.pod = false }
+  print(nssPodLocation)
+  if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.pod = false } // throw new Error('dot') }
+  else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.pod = false } // throw new Error('no data') }
+  else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.pod = false } // throw new Error('webid') }
+  else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.pod = false } // throw new Error('arobase') }
+  else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.pod = false } // throw new Error('blank') }
+  else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.pod = false } // throw new Error('not lowercase') }
   assert(printChecks(pod.username, checks), 'Invalid pod config');
-  if (pod.username) return pod;
+  if (checks.username) return pod;
 }
 
 // Creates a CSS account with a login and pod
