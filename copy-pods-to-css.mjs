@@ -30,6 +30,8 @@ const invalidUsers = {
   dot: [],
   webid: [],
   profile: [],
+  configfilename: [],
+  invalidConfig: [],
   
 }
 let notLowerCase = []
@@ -131,16 +133,16 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     accountsLength += accounts.length
   }
   print('\nNSS userFiles ' + userFiles.length +
-    '\n\tdeprecated config filename ' + invalidUsers.invalidUserFileName.length +
-    '\n\tinvalid pod config ' + invalidUsers.invalidConfig.length
+    '\n\tdeprecated config filename ' + invalidUsers.configfilename?.length +
+    '\n\tinvalid pod config ' + invalidUsers.invalidConfig?.length
   )
   print('\ninvalid pods ' +
-  '\n\tusername with dot ' + invalidUsers.dot.length +
-  '\n\tnodata folder ' + invalidUsers.nodata.length +
-  '\n\tother can\'access profile ' + invalidUsers.profile.length +
-  '\n\tusername with arobase ' + invalidUsers.arobase.length +
-  '\n\tusername with blank ' + invalidUsers.blank.length +
-  '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase.length +
+  '\n\tusername with dot ' + invalidUsers.dot?.length +
+  '\n\tnodata folder ' + invalidUsers.nodata?.length +
+  '\n\tother can\'access profile ' + invalidUsers.profile?.length +
+  '\n\tusername with arobase ' + invalidUsers.arobase?.length +
+  '\n\tusername with blank ' + invalidUsers.blank?.length +
+  '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase?.length +
 
   '\n\nvalid NSS pods ' + userPodsLength +
   '\n\ncreated CSS pods ' + accountsLength +
@@ -173,8 +175,10 @@ async function readPodConfig(configFile, nss) {
     webId: !!pod.webId,
   };
   const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
-  // print(nssPodLocation)
-  if (!configFile.includes(`.${nss.serverUri.host}%2F`)) { invalidUsers.invalidUserFileName.push(pod.username); checks.dot = false }
+  if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
+    invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
+    checks.configfilename = false
+  }
   else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
   else if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
   else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
