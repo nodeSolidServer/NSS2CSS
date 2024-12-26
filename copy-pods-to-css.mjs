@@ -75,7 +75,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_jeswr.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
-  const userPods = await asyncMap(readPodConfig, userFiles.slice(0, 100), nss);
+  const userPods = await asyncMap(readPodConfig, userFiles.slice(6350, 6450), nss);
   /* function testUsername (username, nssPodLocation) {
     if (username.includes('.')) { dot += 1; return true }
     if (!fs.existsSync(nssPodLocation)) { nodata += 1; return true }
@@ -167,6 +167,8 @@ async function readNssConfig(configPath) {
 
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
+  print(`${configFile.split('/').pop()}`)
+  try {
   const pod = await readJson(configFile);
   const checks = {
     username: !!pod.username,
@@ -193,6 +195,7 @@ async function readPodConfig(configFile, nss) {
   if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
   assert(printChecks(pod.username, checks), 'Invalid pod config');
   return pod;
+} catch (err) { print(err) } //print(`${configFile.split('/').pop()}`)}
 }
 
 // Creates a CSS account with a login and pod
