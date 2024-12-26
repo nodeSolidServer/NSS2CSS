@@ -168,8 +168,10 @@ async function readNssConfig(configPath) {
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
   print(`${configFile.split('/').pop()}`)
+  let pod = {}
   try {
-  const pod = await readJson(configFile);
+    pod = await readJson(configFile);
+  } catch (err) { print(err) } //print(`${configFile.split('/').pop()}`)}
   const checks = {
     username: !!pod.username,
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
@@ -195,7 +197,6 @@ async function readPodConfig(configFile, nss) {
   if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
   assert(printChecks(pod.username, checks), 'Invalid pod config');
   return pod;
-} catch (err) { print(err) } //print(`${configFile.split('/').pop()}`)}
 }
 
 // Creates a CSS account with a login and pod
