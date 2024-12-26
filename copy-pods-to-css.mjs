@@ -75,7 +75,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_jeswr.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
-  const userPods = await asyncMap(readPodConfig, userFiles.slice(6350, 6450), nss);
+  const userPods = await asyncMap(readPodConfig, userFiles, nss);
   /* function testUsername (username, nssPodLocation) {
     if (username.includes('.')) { dot += 1; return true }
     if (!fs.existsSync(nssPodLocation)) { nodata += 1; return true }
@@ -95,7 +95,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   // for (pods in chunks) {
   var remaining = userPods.length
   var accountsLength = 0
-  /* for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
+  for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
     const pods = chunks[i]
     // print(`\nprocessing ${step} accounts from remaining ${userPods.length+Number(step)}/${userPodsLength}\n`)
     print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${userPodsLength}\n`)
@@ -131,12 +131,16 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     await asyncMap(testPod, accounts, cssUrl);
 
     accountsLength += accounts.length
-  } */
-  print('\nNSS userFiles ' + userFiles.length +
-    '\n\tdeprecated config filename ' + invalidUsers.configfilename?.length +
-    '\n\tinvalid pod config ' + invalidUsers.invalidConfig?.length
+  }
+
+  const invalidLength = Object.values(invalidUsers).map(a => a.length)
+  const invalidSum = invalidLength.reduce((partialSum, l) => partialSum + l, 0)
+  print('\nNSS userFiles ' + userFiles.length)
+  print('\nInvalid NSS config' +
+    '\n\tdeprecated config filename\t' + invalidUsers.configfilename?.length +
+    '\n\tinvalid config keys\t' + invalidUsers.invalidConfig?.length
   )
-  print('\ninvalid pods ' +
+  print('\ninvalid NSS pods ' +
   '\n\tusername with dot ' + invalidUsers.dot?.length +
   '\n\tnodata folder ' + invalidUsers.nodata?.length +
   '\n\tother can\'access profile ' + invalidUsers.profile?.length +
@@ -145,10 +149,15 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase?.length +
 
   '\n\nvalid NSS pods ' + userPodsLength +
-  '\n\ncreated CSS pods ' + accountsLength +
-  '\n\nfailed CSS pod fetch ' + cssFailedFetch.length
+  '\n\tcheck control (should be zero)\t' + `${userFiles.length - invalidSum - userPodsLength}`
   )
-  print(cssFailedFetch)}
+
+  print('\nCSS pods' +
+  '\n\tcreated CSS pods ' + accountsLength +
+  '\n\tfailed CSS pod fetch ' + cssFailedFetch.length
+  )
+  cssFailedFetch.map(f => print(f))
+}
 
 // Reads the configuration of an NSS instance
 async function readNssConfig(configPath) {
@@ -167,7 +176,6 @@ async function readNssConfig(configPath) {
 
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
-  print(`${configFile.split('/').pop()}`)
   let pod = {}
   try {
     pod = await readJson(configFile);
@@ -528,14 +536,14 @@ function print(message) {
 // returning whether all checks passed
 function printChecks(name, checks) {
   const success = Object.values(checks).every(c => c);
-  print(`\t${check(success)} ${name}\t ${
+  /* print(`\t${check(success)} ${name}\t ${
     Object.entries(checks).map(([key, value]) =>
       `${check(value)} ${key}`).join('\t')
-  }`);
-  /* if (!success) {
+  }`); */
+  if (!success) {
     const checksString = Object.entries(checks).map(([key, value]) => `${check(value)} ${key}`).join('\t')
     print(`\t${check(success)} ${name}\t ${checksString}`);
-  } */
+  }
   return success;
 }
 
