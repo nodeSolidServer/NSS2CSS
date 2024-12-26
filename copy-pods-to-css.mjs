@@ -167,31 +167,32 @@ async function readNssConfig(configPath) {
 
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
-  let pod
-  try {
-    pod = await readJson(configFile);
-  }
-  catch (err) { print(`${configFile.split('/').pop()}\t` + err.message)}
-    // if (pod?.username) pod.username = pod.username.toLowerCase()
-    const checks = {
-      username: !!pod.username,
-      password: (pod.hashedPassword || '').startsWith(passwordHashStart),
-      webId: !!pod.webId,
-    };
+  const pod = await readJson(configFile);
+  const checks = {
+    username: !!pod.username,
+    password: (pod.hashedPassword || '').startsWith(passwordHashStart),
+    webId: !!pod.webId,
+  };
+
+  if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
+    invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
+    checks.configfilename = false
+  } else if (!(['username', 'hashedPassword', 'webId'].every(key => Object.keys(pod).includes(key)))) {
+    invalidUsers.invalidConfig.push(`${configFile.split('/').pop()}`); checks.invalidConfig = false
+  } else {
     const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
-    if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
-      invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
-      checks.configfilename = false
-    }
-    else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
-    else if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
+    // else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
+    if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
     else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
     else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
     else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
     else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
     else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
-    assert(printChecks(pod.username, checks), 'Invalid pod config');
-    return pod;
+    }
+  // let user = !pod.username === false ? pod.username : `${configFile.split('/').pop()}`
+  if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
+  assert(printChecks(pod.username, checks), 'Invalid pod config');
+  return pod;
 }
 
 // Creates a CSS account with a login and pod
