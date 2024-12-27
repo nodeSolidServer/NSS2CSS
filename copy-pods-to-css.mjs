@@ -268,7 +268,7 @@ async function updateAccount(account, internalPath, nss) {
       if (!account.webId.startsWith('https://' + account.username + '.' + nss.host)) {
         // print('external webIdLink ' + account.webId + ' ' + account.username + '.' + nss.host)
         // webIdSections[0].webId = account.webId;
-        cssFailedFetch.push(account.username)
+        cssFailedFetch.push(account.username + '\t' + account.webId)
       }
       else checks.webId = true;
     }
@@ -447,7 +447,7 @@ async function testPod({ username }, cssUrl) {
     const robotsFile = await localFetch(new URL('/robots.txt', podUrl))
     checks.robotsFile = (robotsFile.status === 401 || robotsFile.status === 200);
   } catch (err) {
-    cssFailedFetch.push(podUrl)
+    cssFailedFetch.push(podUrl + '\t' + err.message)
   }
   finally {
     assert(printChecks(username, checks), 'Pod test failed');
