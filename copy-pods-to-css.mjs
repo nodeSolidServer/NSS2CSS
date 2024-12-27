@@ -445,7 +445,7 @@ async function testPod({ username }, cssUrl) {
     const inbox = await localFetch(new URL('/inbox/', podUrl));
     checks.privateInbox = (inbox.status === 401 || inbox.status === 201); // some accounts allow everybody
     const robotsFile = await localFetch(new URL('/robots.txt', podUrl))
-    checks.robotsFile = (robotsFile.status === 401 || robotsFile.status === 201);
+    checks.robotsFile = (robotsFile.status === 401 || robotsFile.status === 200);
   } catch (err) {
     cssFailedFetch.push(podUrl)
   }
