@@ -21,14 +21,18 @@ const expectedArgs = {
 
 const passwordHashStart = '$2a$10$';
 
-let cssFailedFetch = []
+const cssPods = {
+  failedFetch: [],
+  accountsExist: [],
+  otherErrors: [],
+}
 const invalidUsers = {
   notLowerCase: [],
   arobase: [],
   blank: [],
   nodata: [],
   dot: [],
-  webid: [],
+  webId: [],
   profile: [],
   configfilename: [],
   invalidConfig: [],
@@ -133,8 +137,10 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     accountsLength += accounts.length
   }
 
-  const invalidLength = Object.values(invalidUsers).map(a => a.length)
-  const invalidSum = invalidLength.reduce((partialSum, l) => partialSum + l, 0)
+  const sumLength = (invalidUsers) => {
+    const invalidLength = Object.values(invalidUsers).map(a => a.length)
+    return invalidLength.reduce((partialSum, l) => partialSum + l, 0)
+  }
   print('\nNSS userFiles ' + userFiles.length)
   print('\nInvalid NSS config' +
     '\n\tdeprecated config filename\t' + invalidUsers.configfilename?.length +
@@ -144,19 +150,24 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tusername with dot ' + invalidUsers.dot?.length +
   '\n\tnodata folder ' + invalidUsers.nodata?.length +
   '\n\tother can\'access profile ' + invalidUsers.profile?.length +
+  '\n\texternal webId ' + invalidUsers.webId?.length +
   '\n\tusername with arobase ' + invalidUsers.arobase?.length +
   '\n\tusername with blank ' + invalidUsers.blank?.length +
   '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase?.length +
 
   '\n\nvalid NSS pods ' + userPodsLength +
-  '\n\tcheck control (should be zero)\t' + `${userFiles.length - invalidSum - userPodsLength}`
+  '\n\tcheck control (should be zero)\t' + `${userFiles.length - sumLength(invalidUsers) - userPodsLength}`
   )
 
   print('\nCSS pods' +
+  '\n\talready existing CSS pods ' + cssPods.accountsExist.length +
   '\n\tcreated CSS pods ' + accountsLength +
-  '\n\tfailed CSS pod fetch ' + cssFailedFetch.length
+  '\n\tfailed create CSS pods ' + cssPods.otherErrors +
+  '\n\tfailed CSS pod fetch ' + cssPods.failedFetch.length +
+  '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
+
   )
-  cssFailedFetch.map(f => print(f))
+  cssPods.failedFetch.map(f => print(f))
 }
 
 // Reads the configuration of an NSS instance
@@ -185,6 +196,11 @@ async function readPodConfig(configFile, nss) {
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
     webId: !!pod.webId,
   };
+  const nssWebId = async (username, nss) => {
+  const path = resolve(nssDataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
+  var profile = (await readFile(path, 'utf8')).toString()
+  return (profile.match(`<https://${username}.${nss.serverUri.hostname}`) || profile.match('</profile/card'))
+  }
 
   if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
     invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
@@ -197,6 +213,7 @@ async function readPodConfig(configFile, nss) {
     if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
     else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
     else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
+    else if (!nssWebId) { invalidUsers.webId.push(`${username}.${nss.serverUri.hostname}`) }
     else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
     else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
     else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
@@ -235,7 +252,16 @@ async function createAccount(pod, creationUrl, emailDomain) {
     checks.pod = true;
     // print('webId ' + webId)
     return { id, username, email, webId, hashedPassword };
-  }
+  } catch (err) {
+    if (err.message.includes('There already is a login for this e-mail address')) {
+      cssPods.accountsExist.push(username)
+    }
+    else {
+      print(err.message)
+      cssPods.otherErrors.push(username + ' ' + err.message)
+    }
+
+   } // TODO add counts by error type
   finally {
     assert(printChecks(username, checks), 'Could not create account');
   }
@@ -268,7 +294,7 @@ async function updateAccount(account, internalPath, nss) {
       if (!account.webId.startsWith('https://' + account.username + '.' + nss.host)) {
         // print('external webIdLink ' + account.webId + ' ' + account.username + '.' + nss.host)
         // webIdSections[0].webId = account.webId;
-        cssFailedFetch.push(account.username + '\t' + account.webId)
+        cssPods.failedFetch.push(account.username + '\t' + account.webId)
       }
       else checks.webId = true;
     }
@@ -447,7 +473,7 @@ async function testPod({ username }, cssUrl) {
     const robotsFile = await localFetch(new URL('/robots.txt', podUrl))
     checks.robotsFile = (robotsFile.status === 401 || robotsFile.status === 200);
   } catch (err) {
-    cssFailedFetch.push(podUrl + '\t' + err.message)
+    cssPods.failedFetch.push(podUrl + '\t' + err.message)
   }
   finally {
     assert(printChecks(username, checks), 'Pod test failed');
