@@ -162,12 +162,16 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   print('\nCSS pods' +
   '\n\talready existing CSS pods ' + cssPods.accountsExist.length +
   '\n\tcreated CSS pods ' + accountsLength +
-  '\n\tfailed create CSS pods ' + cssPods.otherErrors +
+  '\n\tfailed create CSS pods ' + cssPods.otherErrors.length +
   '\n\tfailed CSS pod fetch ' + cssPods.failedFetch.length +
   '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
 
   )
+  print('\nCSS failed pod fetch')
   cssPods.failedFetch.map(f => print(f))
+  print('\nCSS failed create pod')
+  cssPods.otherErrors.map(f => print(f))
+
 }
 
 // Reads the configuration of an NSS instance
