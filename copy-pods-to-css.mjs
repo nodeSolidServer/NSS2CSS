@@ -3,11 +3,15 @@
 // ©2023 Ruben Verborgh – MIT License
 
 import assert from 'node:assert';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import * as childProcess from 'node:child_process';
-import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import fs from 'node:fs'
+// import { v4 } from 'uuid'
+import { randomUUID } from 'node:crypto'
+
+const v4 = randomUUID
 
 const execFile = promisify(childProcess.execFile);
 
@@ -33,6 +37,7 @@ const invalidUsers = {
   nodata: [],
   dot: [],
   webId: [],
+  externalWebId: [],
   profile: [],
   configfilename: [],
   invalidConfig: [],
@@ -68,7 +73,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   const nss = await readNssConfig(nssConfigPath);
   const cssHost = (new URL(cssUrl)).host
   const nssHost = nss.serverUri.host
-  const userFiles = (await readdir(nss.usersPath)).map(f => resolve(nss.usersPath, f));
+  const userFiles = (await readdir(nss.usersPath)).map(f => resolve(nss.usersPath, f)).slice(0, 2000);
   /* const userFiles = [
     resolve(nss.usersPath, '_key_bourgeoa.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
     resolve(nss.usersPath, '_key_solidos.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
@@ -105,10 +110,16 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${userPodsLength}\n`)
     remaining -= pods.length
     print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
-    const { account: { create } } = await getAccountControls(cssUrl);
     const emailDomain = emailPattern.replace(/.*@+/, '');
-    const accounts = await asyncMap(createAccount, pods, create, emailDomain);
 
+    // HTTP create accounts
+    // const { account: { create } } = await getAccountControls(cssUrl);
+    // const accounts = await asyncMap(createAccount, pods, create, emailDomain);
+
+    // Files create accounts
+    let accounts = await asyncMap(createAccountFiles, pods, cssDataPath, emailDomain, cssUrl);
+    
+    if (!accounts[0]) accounts = []
     print(`3️⃣  CSS: Update ${accounts.length} accounts on disk`);
     await asyncMap(updateAccount, accounts, resolve(cssDataPath, 'www/.internal'), nss);
 
@@ -149,8 +160,8 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   print('\ninvalid NSS pods ' +
   '\n\tusername with dot ' + invalidUsers.dot?.length +
   '\n\tnodata folder ' + invalidUsers.nodata?.length +
-  '\n\tother can\'access profile ' + invalidUsers.profile?.length +
-  '\n\texternal webId ' + invalidUsers.webId?.length +
+  '\n\tno profile/card ' + invalidUsers.profile?.length +
+  '\n\texternal webId ' + invalidUsers.externalWebId?.length +
   '\n\tusername with arobase ' + invalidUsers.arobase?.length +
   '\n\tusername with blank ' + invalidUsers.blank?.length +
   '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase?.length +
@@ -201,9 +212,30 @@ async function readPodConfig(configFile, nss) {
     webId: !!pod.webId,
   };
   const nssWebId = async (username, nss) => {
-  const path = resolve(nssDataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
-  var profile = (await readFile(path, 'utf8')).toString()
-  return (profile.match(`<https://${username}.${nss.serverUri.hostname}`) || profile.match('</profile/card'))
+    const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
+    var profile = (await readFile(path, 'utf8')).toString()
+    let validWebId = true
+    /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
+      profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
+    */
+    // let regex = `/^<https://${username}.solid.community/profile/card#/`
+    let solid = 'solid.community'
+    let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
+    let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
+    // const test = profile.match(regex) || profile.match(/^(.*?):me/)
+    /* if (username === 'externalwebid') {
+      print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
+      print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
+      print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
+    } */
+    if (profile.match(regex)?.length) {
+      validWebId = false }
+    else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
+      validWebId = false }
+    else if (profile.match(/^(.+?):me/)?.length) {
+      validWebId = false
+    }
+    return validWebId
   }
 
   if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
@@ -217,7 +249,7 @@ async function readPodConfig(configFile, nss) {
     if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
     else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
     else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
-    else if (!nssWebId) { invalidUsers.webId.push(`${username}.${nss.serverUri.hostname}`) }
+    else if (!(await nssWebId(pod.username, nss))) { invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); checks.externalWebId = false }
     else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
     else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
     else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
@@ -231,11 +263,13 @@ async function readPodConfig(configFile, nss) {
 // Creates a CSS account with a login and pod
 async function createAccount(pod, creationUrl, emailDomain) {
   const { username, webId, hashedPassword } = pod;
-  const checks = { account: false, login: false, pod: false };
+  const checks = { authorization: false, account: false, login: false, pod: false };
 
   try {
     // Create and obtain a new empty account
     const { authorization } = await cssApiPost(creationUrl);
+    checks.authorization = true
+
     const { controls } = await cssApiGet(creationUrl, authorization);
     const [, id] = /\/account\/([^/]+)\//.exec(controls.account.webId);
     checks.account = true;
@@ -271,12 +305,176 @@ async function createAccount(pod, creationUrl, emailDomain) {
   }
 }
 
+// Creates CSS account files
+async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
+  const internalPath = resolve(cssDataPath, 'www/.internal')
+  const { username, webId, hashedPassword } = pod;
+  const checks = { password: false, pod: false, owner: false, webIdLink: false, account: false };
+  const accountId = v4()
+  const accountKey = `accounts/data/${accountId}`
+  const accountUrl = resolve(internalPath, `${accountKey}$.json`)
+  const podUrl = new URL(cssUrl);
+  podUrl.hostname = `${username}.${podUrl.hostname}`;
+  const webIdUrl = new URL('/profile/card#me', podUrl)
+  const emailAddress = `${username}@${emailDomain}`
+
+
+  // create email and password
+  const passwordIndex = async () => {
+    const emailKey = `accounts/index/password/email/${emailAddress}`
+    const emailFile = resolve(internalPath, `${emailKey}$.json`);
+    const contentFile = {"key":`${emailKey}`, "payload":[accountId]}
+    await writeJson(emailFile, contentFile)
+    const passwordId = v4()
+    const passwordKey = `accounts/index/password/${passwordId}`
+    const passwordFile = resolve(internalPath, `${passwordKey}$.json`)
+    await writeJson(passwordFile, {"key":passwordKey, "payload":[accountId]})
+    return { passwordId }
+  }
+
+  // Create URL for pod
+  const podIndex = async () => {
+    const baseUrlEncoded = encodeURIComponent(`${new URL('/', podUrl)}`)
+    const podId = v4()
+    // podfile
+    const podKey = `accounts/index/pod/${baseUrlEncoded}`
+    const podFile = resolve(internalPath, `accounts/index/pod/${podId}$.json`)
+    await writeJson(podFile, {"key":`${podKey}` , "payload":[accountId]})
+    // baseUrlFile
+    const baseUrlKey = `accounts/index/pod/baseUrl/${baseUrlEncoded}`
+    const baseUrlFile = resolve(internalPath, `${baseUrlKey}$.json`);
+    await writeJson(baseUrlFile, {"key":`${baseUrlKey}`, "payload":[accountId]})
+    return { podId }
+  }
+
+  //create owner
+  const ownerIndex = async () => {
+    const ownerId = v4()
+    // ownerfile
+    const ownerKey = `accounts/index/owner/${ownerId}`
+    const podFile = resolve(internalPath, `accounts/index/owner/${ownerId}$.json`)
+    await writeJson(podFile, {"key":`${ownerKey}` , "payload":[accountId]})
+    return { ownerId }
+  }
+
+  // create webId
+  const webIdLinkIndex = async () => {
+    // const webIdUrl = new URL('/profile/card#me', podUrl)
+    const webIdUrlEncoded = encodeURIComponent(webIdUrl)
+    const webIdLinkId = v4()
+    // webIdLink
+    const webIdKey = `accounts/index/webIdLink/${webIdLinkId}`
+    const webIdLinkFile = resolve(internalPath, `accounts/index/webIdLink/${webIdLinkId}$.json`)
+    await writeJson(webIdLinkFile, {"key":`${webIdKey}` , "payload":[accountId]})
+    // webIdFile
+    const webIdLinkKey = `accounts/index/webIdLink/webId/${webIdUrlEncoded}`
+    // "#me" not encoded in baseUrlFile
+    const baseUrlFile = resolve(internalPath, `${webIdLinkKey.slice(0, -5)}#me$.json`);
+    await writeJson(baseUrlFile, {"key":`${webIdLinkKey}`, "payload":[accountId]})
+    return { webIdLinkId }
+  }
+
+  // create account
+  const account = () => {
+    const contentFile = {
+      "key":accountKey,
+      "payload":{
+        "linkedLoginsCount":1,
+        "id":accountId,
+        "**password**":{},
+        "**clientCredentials**":{},
+        "**pod**":{},
+        "**webIdLink**":{},
+        "rememberLogin":true
+      }
+    }
+    return contentFile
+  }
+
+  // check account do not exists
+  const accountExists = async () => {
+    const emailKey = `accounts/index/password/email/${emailAddress}`
+    const emailFile = resolve(internalPath, `${emailKey}$.json`);
+    if (fs.existsSync(emailFile)) {
+      const { payload: accountId } = JSON.parse(await readFile(emailFile))
+      const accountKey = `accounts/data/${accountId[0]}`
+      const accountUrl = resolve(internalPath, `${accountKey}$.json`)
+      if (fs.existsSync(accountUrl)) { throw new Error('Account exists') }
+      else { return false } // account do not exist even if email key exists => create new account
+    }
+    return false
+  }
+
+  const contentFile = account()
+  try {
+    // account exists
+    const res = await accountExists()
+    // **password** and password indexes
+    const { passwordId } = await passwordIndex()
+    checks.password = true
+    contentFile.payload['**password**'][passwordId] = {
+      "accountId":`${accountId}`,
+      "email":`${emailAddress}`,
+      "password":`${passwordHashStart}${generateRandomPassword()}`,
+      "verified":true,
+      "id":passwordId
+    }
+
+    // **pod** and pod indexes
+    const { podId } = await podIndex()
+    checks.pod = true
+    contentFile.payload['**pod**'][podId] = {
+      "accountId":accountId,
+      "baseUrl":`${new URL('/', podUrl)}`,
+      "id":podId,
+      "**owner**": {}
+    }
+
+    // **owner** and owner index
+    const { ownerId } = await ownerIndex()
+    checks.owner = true
+    contentFile.payload['**pod**'][`${podId}`]['**owner**'][ownerId] = {
+      "podId":podId,
+      "webId":webIdUrl,
+      "visible": false,
+      "id":ownerId
+    }
+
+    // **webIdLink** and webIdLink indexes
+    const { webIdLinkId } = await webIdLinkIndex()
+    checks.webIdLink = true
+    contentFile.payload['**webIdLink**'][webIdLinkId] = {
+      "webId":webIdUrl,
+      "accountId": accountId,
+      "id":webIdLinkId
+    }
+
+    // write account file
+    await writeJson(accountUrl, contentFile)
+    checks.account = true
+
+    return { id: accountId, username, email: emailAddress, webId, hashedPassword };
+  } catch (err) {
+    if (err.message.includes('Account exists')) {
+      cssPods.accountsExist.push(username)
+    }
+    else {
+      print(err.message)
+      cssPods.otherErrors.push(username + ' ' + err.message)
+    }
+
+  } finally {
+    if (!cssPods.accountsExist.every(f => (f === username))) assert(printChecks(username, checks), 'Could not create account');
+  }
+}
+
 // Updates the password and WebID in the account file
 async function updateAccount(account, internalPath, nss) {
   const checks = { read: false, password: false, webId: false, write: false };
   try {
     // Read the account file from disk
     const accountFile = resolve(internalPath, `accounts/data/${account.id}$.json`);
+
     const accountConfig = await readJson(accountFile);
     checks.read = true;
 
@@ -589,6 +787,9 @@ async function readJson(path) {
 
 // Writes a JSON file to disk
 async function writeJson(path, contents = {}) {
+  // print(`\n${path}\n${JSON.stringify(contents)}`)
+  const pathDir = dirname(path)
+  if (!fs.existsSync(pathDir)) { await mkdir(pathDir, { recursive: true }) }
   await writeFile(path, JSON.stringify(contents));
 }
 
