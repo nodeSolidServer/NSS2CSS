@@ -41,7 +41,7 @@ const invalidUsers = {
   profile: [],
   configfilename: [],
   invalidConfig: [],
-  
+  invalidJson: []
 }
 let notLowerCase = []
 let arobase = []
@@ -154,6 +154,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   }
   print('\nNSS userFiles ' + userFiles.length)
   print('\nInvalid NSS config' +
+    '\n\tinvalid Json\t' + invalidUsers.invalidJson?.length +
     '\n\tdeprecated config filename\t' + invalidUsers.configfilename?.length +
     '\n\tinvalid config keys\t' + invalidUsers.invalidConfig?.length
   )
@@ -205,7 +206,12 @@ async function readPodConfig(configFile, nss) {
   let pod = {}
   try {
     pod = await readJson(configFile);
-  } catch (err) { print(err) } //print(`${configFile.split('/').pop()}`)}
+  } catch (err) {
+    print(err)
+    checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
+    invalidUsers.invalidJson.push(configFile)
+    return pod
+  }
   const checks = {
     username: !!pod.username,
     password: (pod.hashedPassword || '').startsWith(passwordHashStart),
