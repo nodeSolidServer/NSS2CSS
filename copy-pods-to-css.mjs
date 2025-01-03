@@ -73,7 +73,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   const nss = await readNssConfig(nssConfigPath);
   const cssHost = (new URL(cssUrl)).host
   const nssHost = nss.serverUri.host
-  const userFiles = (await readdir(nss.usersPath)).map(f => resolve(nss.usersPath, f)).slice(0, 2000);
+  const userFiles = (await readdir(nss.usersPath)).map(f => resolve(nss.usersPath, f));
   /* const userFiles = [
     resolve(nss.usersPath, '_key_bourgeoa.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
     resolve(nss.usersPath, '_key_solidos.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
@@ -118,7 +118,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
     // Files create accounts
     let accounts = await asyncMap(createAccountFiles, pods, cssDataPath, emailDomain, cssUrl);
-    
+
     if (!accounts[0]) accounts = []
     print(`3️⃣  CSS: Update ${accounts.length} accounts on disk`);
     await asyncMap(updateAccount, accounts, resolve(cssDataPath, 'www/.internal'), nss);
@@ -457,6 +457,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
   } catch (err) {
     if (err.message.includes('Account exists')) {
       cssPods.accountsExist.push(username)
+      res = true
     }
     else {
       print(err.message)
@@ -464,7 +465,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
     }
 
   } finally {
-    if (!cssPods.accountsExist.every(f => (f === username))) assert(printChecks(username, checks), 'Could not create account');
+    if (!res) assert(printChecks(username, checks), 'Could not create account');
   }
 }
 
