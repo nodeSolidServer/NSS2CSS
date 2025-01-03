@@ -41,7 +41,8 @@ const invalidUsers = {
   profile: [],
   configfilename: [],
   invalidConfig: [],
-  invalidJson: []
+  invalidJson: [],
+  Errors: []
 }
 let notLowerCase = []
 let arobase = []
@@ -207,21 +208,22 @@ async function readNssConfig(configPath) {
 
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
+  var checks = { username: false, password: false, webId: false }
+  let pod = {}
   try {
-    let pod = {}
     try {
       pod = await readJson(configFile);
-    } catch (err) {
+      checks = {
+        username: !!pod.username,
+        password: (pod.hashedPassword || '').startsWith(passwordHashStart),
+        webId: !!pod.webId,
+      };
+      } catch (err) {
       print(err)
       checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
       invalidUsers.invalidJson.push(configFile)
       return pod
     }
-    const checks = {
-      username: !!pod.username,
-      password: (pod.hashedPassword || '').startsWith(passwordHashStart),
-      webId: !!pod.webId,
-    };
     const nssWebId = async (username, nss) => {
       try {
         const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
@@ -269,10 +271,12 @@ async function readPodConfig(configFile, nss) {
       }
     // let user = !pod.username === false ? pod.username : `${configFile.split('/').pop()}`
     if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
-    assert(printChecks(pod.username, checks), 'Invalid pod config');
     return pod;
   }
-  catch (err) { invalidUsers.Errors.push(err.message) }
+  catch (err) { if (err.message !== 'Invalid pod config') invalidUsers.Errors.push(err.message)
+  }
+  finally {
+    assert(printChecks(pod.username, checks), 'Invalid pod config'); }
 }
 
 // Creates a CSS account with a login and pod
