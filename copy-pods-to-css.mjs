@@ -180,8 +180,8 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
 
   )
   // save errors
-  await mkdir('nssErrors')
-  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value))
+  if (!fs.existsSync('nssErrors')) { await mkdir('nssErrors') }
+  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value.join('\n')))
 
   print('\nCSS failed pod fetch')
   cssPods.failedFetch.map(f => print(f))
