@@ -207,69 +207,72 @@ async function readNssConfig(configPath) {
 
 // Reads the configuration of a single pod from the NSS database
 async function readPodConfig(configFile, nss) {
-  let pod = {}
   try {
-    pod = await readJson(configFile);
-  } catch (err) {
-    print(err)
-    checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
-    invalidUsers.invalidJson.push(configFile)
-    return pod
-  }
-  const checks = {
-    username: !!pod.username,
-    password: (pod.hashedPassword || '').startsWith(passwordHashStart),
-    webId: !!pod.webId,
-  };
-  const nssWebId = async (username, nss) => {
+    let pod = {}
     try {
-      const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
-      var profile = (await readFile(path, 'utf8')).toString()
-      let validWebId = true
-      /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
-        profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
-      */
-      // let regex = `/^<https://${username}.solid.community/profile/card#/`
-      let solid = 'solid.community'
-      let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
-      let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
-      // const test = profile.match(regex) || profile.match(/^(.*?):me/)
-      /* if (username === 'externalwebid') {
-        print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
-        print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
-        print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
-      } */
-      if (profile.match(regex)?.length) {
-        validWebId = false }
-      else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
-        validWebId = false }
-      else if (profile.match(/^(.+?):me/)?.length) {
-        validWebId = false
-      }
-      return validWebId
-    } catch (err) { print(err.message); return false }
-  }
-
-  if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
-    invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
-    checks.configfilename = false
-  } else if (!(['username', 'hashedPassword', 'webId'].every(key => Object.keys(pod).includes(key)))) {
-    invalidUsers.invalidConfig.push(`${configFile.split('/').pop()}`); checks.invalidConfig = false
-  } else {
-    const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
-    // else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
-    if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
-    else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
-    else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
-    else if (!(await nssWebId(pod.username, nss))) { invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); checks.externalWebId = false }
-    else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
-    else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
-    else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
+      pod = await readJson(configFile);
+    } catch (err) {
+      print(err)
+      checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
+      invalidUsers.invalidJson.push(configFile)
+      return pod
     }
-  // let user = !pod.username === false ? pod.username : `${configFile.split('/').pop()}`
-  if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
-  assert(printChecks(pod.username, checks), 'Invalid pod config');
-  return pod;
+    const checks = {
+      username: !!pod.username,
+      password: (pod.hashedPassword || '').startsWith(passwordHashStart),
+      webId: !!pod.webId,
+    };
+    const nssWebId = async (username, nss) => {
+      try {
+        const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
+        var profile = (await readFile(path, 'utf8')).toString()
+        let validWebId = true
+        /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
+          profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
+        */
+        // let regex = `/^<https://${username}.solid.community/profile/card#/`
+        let solid = 'solid.community'
+        let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
+        let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
+        // const test = profile.match(regex) || profile.match(/^(.*?):me/)
+        /* if (username === 'externalwebid') {
+          print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
+          print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
+          print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
+        } */
+        if (profile.match(regex)?.length) {
+          validWebId = false }
+        else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
+          validWebId = false }
+        else if (profile.match(/^(.+?):me/)?.length) {
+          validWebId = false
+        }
+        return validWebId
+      } catch (err) { print(err.message); return false }
+    }
+
+    if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
+      invalidUsers.configfilename.push(`${configFile.split('/').pop()}`)
+      checks.configfilename = false
+    } else if (!(['username', 'hashedPassword', 'webId'].every(key => Object.keys(pod).includes(key)))) {
+      invalidUsers.invalidConfig.push(`${configFile.split('/').pop()}`); checks.invalidConfig = false
+    } else {
+      const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
+      // else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
+      if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
+      else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
+      else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
+      else if (!(await nssWebId(pod.username, nss))) { invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); checks.externalWebId = false }
+      else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
+      else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
+      else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
+      }
+    // let user = !pod.username === false ? pod.username : `${configFile.split('/').pop()}`
+    if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
+    assert(printChecks(pod.username, checks), 'Invalid pod config');
+    return pod;
+  }
+  catch (err) { invalidUsers.Errors.push(err.message) }
 }
 
 // Creates a CSS account with a login and pod
