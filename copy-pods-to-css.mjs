@@ -179,6 +179,10 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
 
   )
+  // save errors
+  await mkdir('nssErrors')
+  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value))
+
   print('\nCSS failed pod fetch')
   cssPods.failedFetch.map(f => print(f))
   print('\nCSS failed create pod')
@@ -218,30 +222,32 @@ async function readPodConfig(configFile, nss) {
     webId: !!pod.webId,
   };
   const nssWebId = async (username, nss) => {
-    const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
-    var profile = (await readFile(path, 'utf8')).toString()
-    let validWebId = true
-    /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
-      profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
-    */
-    // let regex = `/^<https://${username}.solid.community/profile/card#/`
-    let solid = 'solid.community'
-    let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
-    let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
-    // const test = profile.match(regex) || profile.match(/^(.*?):me/)
-    /* if (username === 'externalwebid') {
-      print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
-      print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
-      print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
-    } */
-    if (profile.match(regex)?.length) {
-      validWebId = false }
-    else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
-      validWebId = false }
-    else if (profile.match(/^(.+?):me/)?.length) {
-      validWebId = false
-    }
-    return validWebId
+    try {
+      const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
+      var profile = (await readFile(path, 'utf8')).toString()
+      let validWebId = true
+      /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
+        profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
+      */
+      // let regex = `/^<https://${username}.solid.community/profile/card#/`
+      let solid = 'solid.community'
+      let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
+      let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
+      // const test = profile.match(regex) || profile.match(/^(.*?):me/)
+      /* if (username === 'externalwebid') {
+        print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
+        print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
+        print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
+      } */
+      if (profile.match(regex)?.length) {
+        validWebId = false }
+      else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
+        validWebId = false }
+      else if (profile.match(/^(.+?):me/)?.length) {
+        validWebId = false
+      }
+      return validWebId
+    } catch (err) { print(err.message); return false }
   }
 
   if (!configFile.includes(`.${nss.serverUri.hostname}`)) {
