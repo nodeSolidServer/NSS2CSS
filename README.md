@@ -1,3 +1,10 @@
+* UPDATE :
+- filter NSS accounts for historical invalid accounts or pods
+- CSS account creation : replace HTTP by files for performance issue
+- performance on migrating solidcommunity.net
+  - accounts 65000 --> 17000 valid Pods to migrate
+  - duration 1 h
+
 # Copy NSS pods to CSS
 This [zero-dependency script for Node.js](https://github.com/RubenVerborgh/NSS2CSS/blob/main/copy-pods-to-css.mjs)
 copies all pods
@@ -24,9 +31,10 @@ This script:
   - The username changes from `alice` to `alice@users.css.pod` (configurable)
   - The password remains the same
 - Copies the contents of each NSS pod to the corresponding CSS pod
-- Performs 2 tests per pod
+- Performs 3 HTTP tests per pod
   - Access the profile document (assumed public)
   - Access the inbox (assumed private)
+  - Access the /robots.txt (no a default in CSS)
 
 ## License
 ©2023 Ruben Verborgh – MIT License

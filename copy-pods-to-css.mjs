@@ -37,6 +37,7 @@ const invalidUsers = {
   nodata: [],
   dot: [],
   webId: [],
+  solidCommunity: [],
   externalWebId: [],
   profile: [],
   configfilename: [],
@@ -44,13 +45,6 @@ const invalidUsers = {
   invalidJson: [],
   Errors: []
 }
-let notLowerCase = []
-let arobase = []
-let blank = []
-let nodata = []
-let dot = []
-let webid = []
-
 
 main(...process.argv).catch(console.error);
 
@@ -163,6 +157,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tusername with dot ' + invalidUsers.dot?.length +
   '\n\tnodata folder ' + invalidUsers.nodata?.length +
   '\n\tno profile/card ' + invalidUsers.profile?.length +
+  '\n\tsolidCommunity webId ' + invalidUsers.solidCommunity?.length +
   '\n\texternal webId ' + invalidUsers.externalWebId?.length +
   '\n\tusername with arobase ' + invalidUsers.arobase?.length +
   '\n\tusername with blank ' + invalidUsers.blank?.length +
@@ -210,6 +205,7 @@ async function readNssConfig(configPath) {
 async function readPodConfig(configFile, nss) {
   var checks = { username: false, password: false, webId: false }
   let pod = {}
+
   try {
     try {
       pod = await readJson(configFile);
@@ -218,7 +214,7 @@ async function readPodConfig(configFile, nss) {
         password: (pod.hashedPassword || '').startsWith(passwordHashStart),
         webId: !!pod.webId,
       };
-      } catch (err) {
+    } catch (err) {
       print(err)
       checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
       invalidUsers.invalidJson.push(configFile)
@@ -243,11 +239,12 @@ async function readPodConfig(configFile, nss) {
           print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
         } */
         if (profile.match(regex)?.length) {
+          invalidUsers.solidCommunity.push(`${pod.username}.${nss.serverUri.hostname}`);
           validWebId = false }
         else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
-          validWebId = false }
+          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`);        validWebId = false }
         else if (profile.match(/^(.+?):me/)?.length) {
-          validWebId = false
+          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`);        validWebId = false
         }
         return validWebId
       } catch (err) { print(err.message); return false }
@@ -264,7 +261,7 @@ async function readPodConfig(configFile, nss) {
       if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
       else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
       else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
-      else if (!(await nssWebId(pod.username, nss))) { invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); checks.externalWebId = false }
+      else if (!(await nssWebId(pod.username, nss))) { checks.externalWebId = false }
       else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
       else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
       else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
@@ -278,6 +275,7 @@ async function readPodConfig(configFile, nss) {
   finally {
     assert(printChecks(pod.username, checks), 'Invalid pod config'); }
 }
+
 
 // Creates a CSS account with a login and pod
 async function createAccount(pod, creationUrl, emailDomain) {
@@ -336,7 +334,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
   podUrl.hostname = `${username}.${podUrl.hostname}`;
   const webIdUrl = new URL('/profile/card#me', podUrl)
   const emailAddress = `${username}@${emailDomain}`
-
+  let res = true
 
   // create email and password
   const passwordIndex = async () => {
@@ -427,7 +425,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
   const contentFile = account()
   try {
     // account exists
-    const res = await accountExists()
+    res = await accountExists()
     // **password** and password indexes
     const { passwordId } = await passwordIndex()
     checks.password = true
@@ -476,7 +474,6 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
   } catch (err) {
     if (err.message.includes('Account exists')) {
       cssPods.accountsExist.push(username)
-      res = true
     }
     else {
       print(err.message)
