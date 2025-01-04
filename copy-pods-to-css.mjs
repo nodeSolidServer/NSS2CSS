@@ -80,20 +80,13 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
   const userPods = await asyncMap(readPodConfig, userFiles, nss);
-  /* function testUsername (username, nssPodLocation) {
-    if (username.includes('.')) { dot += 1; return true }
-    if (!fs.existsSync(nssPodLocation)) { nodata += 1; return true }
-    if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { webid += 1; return true }
-    if (username.includes(' ')) { blank += 1; return true }
-    if (username.includes('@')) { arobase += 1; return true }
-    if (!isLowerCase(username)) { notLowerCase += 1; return true }
-    return false
-    } */
   print('userPods ' + userPods.length)
   const userPodsLength = userPods.length
-  /* while(userPods.length) {
-    step = (step && (step < userPods.length)) ? step : userPods.length
-    const pods = userPods.splice(0, step) */
+
+  // save invalid NSS accounts/pods
+  if (!fs.existsSync('nssErrors')) { await mkdir('nssErrors') }
+  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value.join('\n')))
+
   step = (step && (step < userPods.length)) ? step : userPods.length
   const chunks = userPods.chunk(step)
   // for (pods in chunks) {
@@ -101,7 +94,6 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   var accountsLength = 0
   for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
     const pods = chunks[i]
-    // print(`\nprocessing ${step} accounts from remaining ${userPods.length+Number(step)}/${userPodsLength}\n`)
     print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${userPodsLength}\n`)
     remaining -= pods.length
     print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
@@ -175,9 +167,6 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
 
   )
-  // save errors
-  if (!fs.existsSync('nssErrors')) { await mkdir('nssErrors') }
-  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value.join('\n')))
 
   print('\nCSS failed pod fetch')
   cssPods.failedFetch.map(f => print(f))
@@ -217,7 +206,8 @@ async function readPodConfig(configFile, nss) {
     } catch (err) {
       print(err)
       checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
-      invalidUsers.invalidJson.push(configFile)
+      invalidUsers.invalidJson.push(configFile.split('/').pop())
+      print(invalidUsers.invalidJson)
       return pod
     }
     const nssWebId = async (username, nss) => {
@@ -225,26 +215,16 @@ async function readPodConfig(configFile, nss) {
         const path = resolve(nss.dataPath, `${username}.${nss.serverUri.hostname}`, 'profile/card$.ttl')
         var profile = (await readFile(path, 'utf8')).toString()
         let validWebId = true
-        /* validWebId = profile.match(`/<https://${username}.${nss.serverUri.hostname}/gm`)?.length || 
-          profile.match(/^</profile/card#me>/gm)?.length) || profile.match(/^:me/gm)?.length
-        */
-        // let regex = `/^<https://${username}.solid.community/profile/card#/`
         let solid = 'solid.community'
         let regex = new RegExp(`^<https:\/\/(.*?)${solid}\/profile\/card#me>`, 'gm') // reg is an array or null
         let regex1 = new RegExp(/^<https:\/\/(.*?)\/profile\/card#me>/, 'gm')
-        // const test = profile.match(regex) || profile.match(/^(.*?):me/)
-        /* if (username === 'externalwebid') {
-          print(`1.${username}.${nss.serverUri.hostname}\t` + profile.match(regex));
-          print(`2.${username}.${nss.serverUri.hostname}\t` + profile.match(regex1));
-          print(`3.${username}.${nss.serverUri.hostname}\t` + profile.match(/^(.*?):me/))
-        } */
         if (profile.match(regex)?.length) {
           invalidUsers.solidCommunity.push(`${pod.username}.${nss.serverUri.hostname}`);
           validWebId = false }
         else if (profile.match(regex1) && !profile.match(regex1)[0].includes(nss.serverUri.host)) {
-          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`);        validWebId = false }
+          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); validWebId = false }
         else if (profile.match(/^(.+?):me/)?.length) {
-          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`);        validWebId = false
+          invalidUsers.externalWebId.push(`${pod.username}.${nss.serverUri.hostname}`); validWebId = false
         }
         return validWebId
       } catch (err) { print(err.message); return false }
@@ -256,17 +236,15 @@ async function readPodConfig(configFile, nss) {
     } else if (!(['username', 'hashedPassword', 'webId'].every(key => Object.keys(pod).includes(key)))) {
       invalidUsers.invalidConfig.push(`${configFile.split('/').pop()}`); checks.invalidConfig = false
     } else {
-      const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`) // alain
-      // else if (!pod.username && !pod.password && !pod.webId) {invalidUsers.invalidConfig.push(pod.username)}
-      if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false } // throw new Error('dot') }
-      else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false } // throw new Error('no data') }
+      const nssPodLocation = resolve(nss.dataPath, `${pod.username.toLowerCase()}.${nss.serverUri.hostname}`)
+      if (pod.username.includes('.')) { invalidUsers.dot.push(pod.username); checks.dot = false }
+      else if (!fs.existsSync(nssPodLocation)) { invalidUsers.nodata.push(pod.username); checks.nodata = false }
       else if (!fs.existsSync(resolve(nssPodLocation, 'profile/card$.ttl'))) { invalidUsers.profile.push(pod.username); checks.profile = false } // throw new Error('webid') }
-      else if (!(await nssWebId(pod.username, nss))) { checks.externalWebId = false }
-      else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false } // throw new Error('arobase') }
-      else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false } // throw new Error('blank') }
-      else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false } // throw new Error('not lowercase') }
+      else if (!(await nssWebId(pod.username.toLowerCase(), nss))) { checks.externalWebId = false }
+      else if (pod.username.includes('@')) { invalidUsers.arobase.push(pod.username); checks.arobase = false }
+      else if (pod.username.includes(' ')) { invalidUsers.blank.push(pod.username); checks.blank = false }
+      else if (!isLowerCase(pod.username)) { invalidUsers.notLowerCase.push(pod.username); checks.notLowerCase = false }
       }
-    // let user = !pod.username === false ? pod.username : `${configFile.split('/').pop()}`
     if (checks.invalidConfig === false || checks.configfilename === false) print(`${configFile.split('/').pop()}`)
     return pod;
   }
@@ -305,7 +283,6 @@ async function createAccount(pod, creationUrl, emailDomain) {
     // Create a pod under the account
     await cssApiPost(controls.account.pod, { name: username }, authorization);
     checks.pod = true;
-    // print('webId ' + webId)
     return { id, username, email, webId, hashedPassword };
   } catch (err) {
     if (err.message.includes('There already is a login for this e-mail address')) {
@@ -316,7 +293,7 @@ async function createAccount(pod, creationUrl, emailDomain) {
       cssPods.otherErrors.push(username + ' ' + err.message)
     }
 
-   } // TODO add counts by error type
+   }
   finally {
     assert(printChecks(username, checks), 'Could not create account');
   }
@@ -376,7 +353,6 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
 
   // create webId
   const webIdLinkIndex = async () => {
-    // const webIdUrl = new URL('/profile/card#me', podUrl)
     const webIdUrlEncoded = encodeURIComponent(webIdUrl)
     const webIdLinkId = v4()
     // webIdLink
@@ -417,7 +393,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
       const accountKey = `accounts/data/${accountId[0]}`
       const accountUrl = resolve(internalPath, `${accountKey}$.json`)
       if (fs.existsSync(accountUrl)) { throw new Error('Account exists') }
-      else { return false } // account do not exist even if email key exists => create new account
+      else { return false } // account do not exist even if emailKey exists => create new account
     }
     return false
   }
@@ -566,8 +542,8 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
   try {
     var profile = (await readFile(path, 'utf8')).toString()
     var newProfile = ''
-    const split1 = `:oidcIssuer <${nssUrl.slice(0, -1)}>` // .toString()
-    const split2 = `oidcIssuer> <${nssUrl.slice(0, -1)}>` // .toString()
+    const split1 = `:oidcIssuer <${nssUrl.slice(0, -1)}>`
+    const split2 = `oidcIssuer> <${nssUrl.slice(0, -1)}>`
 
     if (profile.match(split1)) {
       newProfile = profile.split(split1).join(`:oidcIssuer <${cssUrl}>`)
@@ -627,20 +603,15 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
     for (const i in filter) {
       const ext = filter[i]
       await fromDir(pathToPod, ext, async function(filename) {
-        // const filename = resolve(pathToPod, ext) alain
-        // print(filename) alain
         const content = (await readFile(filename)).toString()
         const patt = new RegExp(escapeStringRegExp(source)) // some username's contain .+ char
         if (patt.test(content)) {
           count += 1
-          // print(count + '  ' + filename)
-          // update file
           const newContent = rename(content, source, target)
           await writeFile(filename, newContent)
         }
       })
     }
-    // print(count)
   }
   catch (err) { print(err) }
   finally {

@@ -1,9 +1,19 @@
-* UPDATE :
-- filter NSS accounts for historical invalid accounts or pods
+# solidcommunity.net UPDATE :
+- updated to CSS v7
+- source/destination can have different domain or domain:port (for example test the migration issues)
+- filter NSS accounts
+  - for historical invalid accounts or pods
+    - accounts 65000 --> 17000 valid Pods to migrate
+  - for incompatible username with email address ('@', blank, uppercase ...)
 - CSS account creation : replace HTTP by files for performance issue
-- performance on migrating solidcommunity.net
-  - accounts 65000 --> 17000 valid Pods to migrate
   - duration 1 h
+- 3 steps have been added
+  - update oidcIssuer
+    - ending with '/' on CSS and not on NSS
+    - change of domain
+  - parse all ACL's to update deprecated `defaultForNew` to `default`
+  - in case of domain transfer : replace all domain links on .ttl .acl .meta (TODO .json and .jsonld)
+
 
 # Copy NSS pods to CSS
 This [zero-dependency script for Node.js](https://github.com/RubenVerborgh/NSS2CSS/blob/main/copy-pods-to-css.mjs)
@@ -24,6 +34,14 @@ where:
 - `css/data/` is the file path the CSS data folder
 - `https://css.pod/` is the URL to the running CSS instance
 - `xxx@users.css.pod` is the template for CSS usernames, where `xxx` is the old NSS username
+
+Running in background and detached mode
+```shell
+nohup ./copy-pods-to-css.mjs nss/config.json css/data/ https://css.pod/ xxx@users.css.pod &
+```
+- stdout is send to `nohup.out`
+
+Rejected pods are listed by issue type file in `nssErrors/`
 
 ## Functionality
 This script:
