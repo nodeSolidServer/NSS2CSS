@@ -30,6 +30,7 @@ const cssPods = {
   accountsExist: [],
   otherErrors: [],
 }
+const oidcIssuer = []
 const invalidUsers = {
   notLowerCase: [],
   arobase: [],
@@ -43,6 +44,7 @@ const invalidUsers = {
   configfilename: [],
   invalidConfig: [],
   invalidJson: [],
+  oidcIssuerNotFound: [],
   Errors: []
 }
 
@@ -167,6 +169,8 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
 
   )
+  print('\noidcIssuer not found ' + oidcIssuer.length)
+  oidcIssuer.map(f => print(`\t${f}`))
 
   print('\nCSS failed pod fetch')
   cssPods.failedFetch.map(f => print(f))
@@ -541,20 +545,25 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
   const path = resolve(cssDataPath, username, 'profile/card$.ttl')
   try {
     var profile = (await readFile(path, 'utf8')).toString()
-    var newProfile = ''
-    const split1 = `:oidcIssuer <${nssUrl.slice(0, -1)}>`
-    const split2 = `oidcIssuer> <${nssUrl.slice(0, -1)}>`
+    var newProfile = profile
+    // NSS can have end slash or not
+    // there may be multiple oidcIssuer's
+    const split1 = `:oidcIssuer(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`
+    const split2 = `oidcIssuer>(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`
 
-    if (profile.match(split1)) {
+    if (profile.match(split1) !== null) {
       newProfile = profile.split(split1).join(`:oidcIssuer <${cssUrl}>`)
-    } else if (profile.match(split2)) {
+    } else if (profile.match(split2) !== null) {
       newProfile = profile.split(split2).join(`oidcIssuer> <${cssUrl}>`)
-    } else { new Error('oidcIssuer not updated for podname : ' + username) }
+    } else {
+      throw new Error('oidcIssuer not updated for podname : ' + username)
+    }
     await writeFile(path, newProfile)
     checks.oidcIssuer = true
   }
   catch (err) {
     print(err)
+    oidcIssuer.push(username)
   }
   finally {
     assert(printChecks(username, checks), 'oidcIssuer update failed');
@@ -594,7 +603,7 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
   const pathToPod = resolve(cssDataPath, username)
   const source = nssHost
   const target = cssHost
-  const filter = ['.acl', '.meta', '.ttl']
+  const filter = ['.acl', '.meta', '.ttl'] // TODO .json .jsonld .html .txt
 
   try {
     // recursively replace string in folder/.acl
