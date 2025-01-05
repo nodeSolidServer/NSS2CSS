@@ -603,7 +603,7 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
   const pathToPod = resolve(cssDataPath, username)
   const source = nssHost
   const target = cssHost
-  const filter = ['.acl', '.meta', '.ttl'] // TODO .json .jsonld .html .txt
+  const filter = ['.acl', '.meta', '.ttl', '.html', '.txt', '.json', '.jsonld']
 
   try {
     // recursively replace string in folder/.acl
@@ -612,7 +612,8 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
     for (const i in filter) {
       const ext = filter[i]
       await fromDir(pathToPod, ext, async function(filename) {
-        const content = (await readFile(filename)).toString()
+        let content
+        content = (await readFile(filename)).toString()
         const patt = new RegExp(escapeStringRegExp(source)) // some username's contain .+ char
         if (patt.test(content)) {
           count += 1
@@ -635,21 +636,24 @@ async function fromDir(startPath, filter, callback) {
       console.log("no dir ",startPath)
       return
   } */
-  var files = await readdir(startPath)
-  for (var i = 0; i < files.length; i++) {
-      var filename = resolve(startPath, files[i])
-      var stat = await lstat(filename)
-      if (stat.isDirectory()) {
-          fromDir(filename, filter, callback) //recurse
-      }
-      else if (filename.endsWith(filter)) callback(filename)
-  }
+  try {
+    var files = await readdir(startPath)
+    for (var i = 0; i < files.length; i++) {
+        var filename = resolve(startPath, files[i])
+        var stat = await lstat(filename)
+        if (stat.isSymbolicLink()) continue
+        if (stat.isDirectory()) {
+            fromDir(filename, filter, callback) //recurse
+        }
+        else if (filename.endsWith(filter)) callback(filename)
+    }
+  } catch(err) { print(err.message) }
 }
 
 // rename server links
 function rename (content, source, target) {
   // alain TODO review delimiters to keep item[1] only
-  const delimiters = [['<', '>'], ['<', '/']] // json/jsonld , ['""', '""'], ['"', '/']]
+  const delimiters = [['<', '>'], ['<', '/'], ['""', '""'], ['"', '/']] // json/jsonld , ['""', '""'], ['"', '/']]
   delimiters.map( item => {
     content = content.split(`.${source}${item[1]}`).join(`.${target}${item[1]}`)
   })
