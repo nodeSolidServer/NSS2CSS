@@ -548,13 +548,13 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
     var newProfile = profile
     // NSS can have end slash or not
     // there may be multiple oidcIssuer's
-    const split1 = `:oidcIssuer(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`
-    const split2 = `oidcIssuer>(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`
+    const split1 = profile.match(`:oidcIssuer(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`)
+    const split2 = profile.match(`oidcIssuer>(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`)
 
-    if (profile.match(split1) !== null) {
-      newProfile = profile.split(split1).join(`:oidcIssuer <${cssUrl}>`)
-    } else if (profile.match(split2) !== null) {
-      newProfile = profile.split(split2).join(`oidcIssuer> <${cssUrl}>`)
+    if (split1 !== null) {
+      newProfile = profile.split(split1[0]).join(`:oidcIssuer${split1[1]}<${cssUrl}>`)
+    } else if (split2 !== null) {
+      newProfile = profile.split(split2[0]).join(`oidcIssuer>${split2[1]}<${cssUrl}>`)
     } else {
       throw new Error('oidcIssuer not updated for podname : ' + username)
     }
@@ -603,7 +603,7 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
   const pathToPod = resolve(cssDataPath, username)
   const source = nssHost
   const target = cssHost
-  const filter = ['.acl', '.meta', '.ttl', '.html', '.txt', '.json', '.jsonld']
+  const filter = ['.acl', '.meta', '.ttl'] //, '.html', '.txt', '.json', '.jsonld']
 
   try {
     // recursively replace string in folder/.acl
