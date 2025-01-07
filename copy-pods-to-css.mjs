@@ -8,7 +8,6 @@ import { promisify } from 'node:util';
 import * as childProcess from 'node:child_process';
 import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import fs from 'node:fs'
-// import { v4 } from 'uuid'
 import { randomUUID } from 'node:crypto'
 
 const v4 = randomUUID
@@ -20,7 +19,7 @@ const expectedArgs = {
   'css/data': 'path to the CSS data folder',
   'https://css.pod/': 'URL to the running CSS server instance',
   'xxx@users.css.pod': 'e-mail pattern to generate CSS usernames',
-  'step': 'number of accounts processed at each increment',
+  // 'step': 'number of accounts processed at each increment',
 };
 
 const passwordHashStart = '$2a$10$';
@@ -52,8 +51,8 @@ main(...process.argv).catch(console.error);
 
 // Starts migration with the command-line arguments
 async function main(bin, script, ...args) {
-  // if (args.length === 4) args[4] = ''
-  if (args.length < Object.keys(expectedArgs).length-1) {
+  if (args.length !== Object.keys(expectedArgs).length) {
+  // if (args.length < Object.keys(expectedArgs).length-1) {
     process.stderr.write(`usage: ${script.replace(/.*\//, '')} ${
       Object.keys(expectedArgs).join(' ')}\n${
       Object.entries(expectedArgs).map(([example, description]) =>
@@ -81,23 +80,24 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     resolve(nss.usersPath, '_key_jeswr.solidcommunity.net%2Fprofile%2Fcard%23me.json'),
     resolve(nss.usersPath, '_key_cxres.solidcommunity.net%2Fprofile%2Fcard%23me.json')
   ] */
-  const userPods = await asyncMap(readPodConfig, userFiles, nss);
-  print('userPods ' + userPods.length)
-  const userPodsLength = userPods.length
+  const pods = await asyncMap(readPodConfig, userFiles, nss);
+  print('pods ' + pods.length)
+  const podsLength = pods.length
 
   // save invalid NSS accounts/pods
-  if (!fs.existsSync('nssErrors')) { await mkdir('nssErrors') }
-  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`nssErrors/${key}`, value.join('\n')))
+  if (!fs.existsSync('migration-results/nssIssues')) { await mkdir('migration-results/nssIssues', { recursive: true }) }
+  Object.entries(invalidUsers).map(async ([key, value]) => await writeFile(`migration-results/nssIssues/${key}`, value.join('\n')))
+  await writeJson('migration-results/nsspods', pods)
 
-  step = (step && (step < userPods.length)) ? step : userPods.length
-  const chunks = userPods.chunk(step)
-  // for (pods in chunks) {
-  var remaining = userPods.length
+  /* step = (step && (step < pods.length)) ? step : pods.length
+  const chunks = pods.chunk(step)
+  var remaining = pods.length
   var accountsLength = 0
   for (let i = 0; i < chunks.length; i+=1) { // 2; i+=1) {
-    const pods = chunks[i]
-    print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${userPodsLength}\n`)
+    // const pods = chunks[i]
+    print(`\nprocessing ${pods.length} accounts from remaining ${remaining}/${podsLength}\n`)
     remaining -= pods.length
+    print(`2️⃣  CSS: Create ${chunks[i].length} accounts with pods via HTTP`); */
     print(`2️⃣  CSS: Create ${pods.length} accounts with pods via HTTP`);
     const emailDomain = emailPattern.replace(/.*@+/, '');
 
@@ -106,6 +106,7 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     // const accounts = await asyncMap(createAccount, pods, create, emailDomain);
 
     // Files create accounts
+    // let accounts = await readJson('migration-results/nsspods')
     let accounts = await asyncMap(createAccountFiles, pods, cssDataPath, emailDomain, cssUrl);
 
     if (!accounts[0]) accounts = []
@@ -134,8 +135,8 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
     print(`8️⃣  CSS: Check ${accounts.length} pods for known resources`);
     await asyncMap(testPod, accounts, cssUrl);
 
-    accountsLength += accounts.length
-  }
+  //  accountsLength += accounts.length
+  // }
 
   const sumLength = (invalidUsers) => {
     const invalidLength = Object.values(invalidUsers).map(a => a.length)
@@ -149,30 +150,36 @@ async function copyNssPodsToCSS(nssConfigPath, cssDataPath, cssUrl, emailPattern
   )
   print('\ninvalid NSS pods ' +
   '\n\tusername with dot ' + invalidUsers.dot?.length +
-  '\n\tnodata folder ' + invalidUsers.nodata?.length +
+  '\n\tno data folder ' + invalidUsers.nodata?.length +
   '\n\tno profile/card ' + invalidUsers.profile?.length +
-  '\n\tsolidCommunity webId ' + invalidUsers.solidCommunity?.length +
+  '\n\tonly solid.community webId ' + invalidUsers.solidCommunity?.length +
   '\n\texternal webId ' + invalidUsers.externalWebId?.length +
   '\n\tusername with arobase ' + invalidUsers.arobase?.length +
   '\n\tusername with blank ' + invalidUsers.blank?.length +
   '\n\tusername with uppercase letter ' + invalidUsers.notLowerCase?.length +
 
-  '\n\nvalid NSS pods ' + userPodsLength +
-  '\n\tcheck control (should be zero)\t' + `${userFiles.length - sumLength(invalidUsers) - userPodsLength}`
+  '\n\nvalid NSS pods ' + podsLength +
+  '\n\tcheck control (should be zero)\t' + `${userFiles.length - sumLength(invalidUsers) - podsLength}`
   )
 
   print('\nCSS pods' +
   '\n\talready existing CSS pods ' + cssPods.accountsExist.length +
-  '\n\tcreated CSS pods ' + accountsLength +
+  '\n\tcreated CSS pods ' + accounts.length +
   '\n\tfailed create CSS pods ' + cssPods.otherErrors.length +
   '\n\tfailed CSS pod fetch ' + cssPods.failedFetch.length +
-  '\n\tcheck control (should be zero)\t' + `${userPods.length - sumLength(cssPods) - accountsLength}`
+  '\n\tcheck control (should be zero)\t' + `${pods.length - sumLength(cssPods) - accounts.length}`
 
   )
-  print('\noidcIssuer not found ' + oidcIssuer.length)
+  // save CSS issues
+  if (!fs.existsSync('migration-results/cssPods')) { await mkdir('migration-results/cssPods', { recursive: true }) }
+  Object.entries(cssPods).map(async ([key, value]) => await writeFile(`migration-results/cssPods/${key}`, value.join('\n')))
+  await writeFile(`migration-results/cssPods/oidcIssuer`, oidcIssuer)
+
+  print('\noidcIssuer issue ' + oidcIssuer.length)
   oidcIssuer.map(f => print(`\t${f}`))
 
   print('\nCSS failed pod fetch')
+
   cssPods.failedFetch.map(f => print(f))
   print('\nCSS failed create pod')
   cssPods.otherErrors.map(f => print(f))
@@ -548,13 +555,15 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
     var newProfile = profile
     // NSS can have end slash or not
     // there may be multiple oidcIssuer's
-    const split1 = profile.match(`:oidcIssuer(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`)
-    const split2 = profile.match(`oidcIssuer>(.+?)<${nssUrl.slice(0, -1)}(\/*?)>`)
+    // oidcIssuer triple or prefix
+    const regex = new RegExp(`<${nssUrl.slice(0, -1)}(\/*?)>`, 'gm')
+    const splitItem = profile.match(regex)
+    if ( (!!profile.match(':oidcIssuer ') || !!profile.match('oidcIssuer> ')) && !!splitItem) {
+      newProfile = profile.split(splitItem[0]).join(`<${cssUrl}>`)
 
-    if (split1 !== null) {
-      newProfile = profile.split(split1[0]).join(`:oidcIssuer${split1[1]}<${cssUrl}>`)
-    } else if (split2 !== null) {
-      newProfile = profile.split(split2[0]).join(`oidcIssuer>${split2[1]}<${cssUrl}>`)
+    // } else if (profile.match('oidcIssuerRegistrationToken')) { // ??? shall we insert oidcIssuer
+
+    // no oidcIssuer, or oidcIssuer and external IDP
     } else {
       throw new Error('oidcIssuer not updated for podname : ' + username)
     }
