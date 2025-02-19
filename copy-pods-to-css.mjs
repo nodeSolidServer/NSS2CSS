@@ -215,10 +215,9 @@ async function readPodConfig(configFile, nss) {
         webId: !!pod.webId,
       };
     } catch (err) {
-      print(err)
-      checks.invalidJson = false //print(`${configFile.split('/').pop()}`)}
+      checks.invalidJson = false
       invalidUsers.invalidJson.push(configFile.split('/').pop())
-      print(invalidUsers.invalidJson)
+      print(`${configFile.split('/').pop()} ${err.message}`)
       return pod
     }
     const nssWebId = async (username, nss) => {
@@ -300,7 +299,7 @@ async function createAccount(pod, creationUrl, emailDomain) {
       cssPods.accountsExist.push(username)
     }
     else {
-      print(err.message)
+      print(username + ' ' + err.message)
       cssPods.otherErrors.push(username + ' ' + err.message)
     }
 
@@ -400,7 +399,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
     const emailKey = `accounts/index/password/email/${emailAddress}`
     const emailFile = resolve(internalPath, `${emailKey}$.json`);
     if (fs.existsSync(emailFile)) {
-      const { payload: accountId } = JSON.parse(await readFile(emailFile))
+      const { payload: accountId } = await readJson(emailFile)
       const accountKey = `accounts/data/${accountId[0]}`
       const accountUrl = resolve(internalPath, `${accountKey}$.json`)
       if (fs.existsSync(accountUrl)) { throw new Error('Account exists') }
@@ -463,7 +462,7 @@ async function createAccountFiles(pod, cssDataPath, emailDomain, cssUrl) {
       cssPods.accountsExist.push(username)
     }
     else {
-      print(err.message)
+      print(username + ' ' + err.message)
       cssPods.otherErrors.push(username + ' ' + err.message)
     }
 
@@ -538,7 +537,7 @@ async function copyPodFiles({ username }, hostname, nssDataPath, cssDataPath) {
   }
   catch (err)
   {
-    print(err)
+    print(err.message)
   }
   finally {
     assert(printChecks(username, checks), 'Pod copy failed');
@@ -560,18 +559,16 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
     const splitItem = profile.match(regex)
     if ( (!!profile.match(':oidcIssuer ') || !!profile.match('oidcIssuer> ')) && !!splitItem) {
       newProfile = profile.split(splitItem[0]).join(`<${cssUrl}>`)
-
-    // } else if (profile.match('oidcIssuerRegistrationToken')) { // ??? shall we insert oidcIssuer
-
     // no oidcIssuer, or oidcIssuer and external IDP
     } else {
-      throw new Error('oidcIssuer not updated for podname : ' + username)
+      if (!profile.match(`<${cssUrl}>`)) { // oidcIssuer already updated
+        throw new Error('oidcIssuer not updated for podname : ' + username)
+      }
     }
     await writeFile(path, newProfile)
     checks.oidcIssuer = true
   }
   catch (err) {
-    print(err)
     oidcIssuer.push(username)
   }
   finally {
@@ -583,8 +580,8 @@ async function updateOidcIssuer ({ username }, cssDataPath, nssUrl, cssUrl) {
 async function updateAclDefault ({ username }, cssDataPath) {
   // const checks = { default: false };
   const pathToPod = resolve(cssDataPath, username)
-  const source = 'acl:defaultForNew'
-  const target = 'acl:default'
+  const source = 'defaultForNew'
+  const target = 'default'
   const aclFile = '.acl'
   let count = 0
 
@@ -632,7 +629,7 @@ async function updatePodLink ({ username }, nssHost, cssHost, cssDataPath) {
       })
     }
   }
-  catch (err) { print(err) }
+  catch (err) { print(err.message) }
   finally {
     // assert(print(`\t${username}\t${count}`), 'acl:default update failed');
   }
